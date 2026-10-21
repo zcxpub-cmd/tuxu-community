@@ -1,0 +1,42 @@
+name: Community CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TUXU_DATA_DIR: ${{ runner.temp }}/tuxu-community-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.lock.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.lock.txt
+      - name: Install and build frontend
+        run: npm ci --prefix frontend && npm run build --prefix frontend
+      - name: Frontend checks
+        working-directory: frontend
+        run: |
+          npm run test:keys
+          npm run test:preview
+          npm run test:director
+          npm run test:public
+          npm run test:providers
+          npm run test:verification
+      - name: Backend checks (mocked models only)
+        run: python -m pytest -q backend/tests
+      - name: Publication file check
+        run: python scripts/check_release.py --tracked

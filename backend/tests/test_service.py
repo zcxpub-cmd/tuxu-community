@@ -870,13 +870,16 @@ def test_saved_zero_slot_plan_exports_without_model_approval_and_version_conflic
     assert response.status_code == 200 and response.json()['url'] != entry['url']
 
 
+@pytest.mark.parametrize('platform_name', ['darwin', 'linux'])
 @pytest.mark.parametrize('use_override', [False, True])
-def test_import_persists_outside_desktop_by_default_or_explicit_override(tmp_path, docs_double, monkeypatch, use_override):
+def test_import_persists_outside_desktop_by_default_or_explicit_override(tmp_path, docs_double, monkeypatch, use_override, platform_name):
     fake_home = tmp_path / 'home'
     desktop = fake_home / 'Desktop'
     desktop.mkdir(parents=True)
     monkeypatch.setattr(Path, 'home', classmethod(lambda cls: fake_home))
     monkeypatch.delenv('TUXU_DATA_DIR', raising=False)
+    monkeypatch.delenv('XDG_DATA_HOME', raising=False)
+    monkeypatch.setattr('backend.app.paths.sys.platform', platform_name)
     if use_override:
         monkeypatch.setenv('TUXU_DATA_DIR', str(tmp_path / 'private-override'))
     app = create_app(ollama_adapter=FakeText(), comfy_adapter=FakeComfy())
@@ -896,5 +899,7 @@ def test_import_persists_outside_desktop_by_default_or_explicit_override(tmp_pat
         if use_override:
             assert app.state.service.store.directory == tmp_path / 'private-override'
         else:
-            assert source.is_relative_to(fake_home / 'Library' / 'Application Support')
+            expected_base = (fake_home / 'Library' / 'Application Support' if platform_name == 'darwin'
+                             else fake_home / '.local' / 'share')
+            assert source.is_relative_to(expected_base / 'TuxuCommunity' / 'data')
     app.state.service.executor.shutdown(wait=True)

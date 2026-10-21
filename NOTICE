@@ -1,0 +1,10 @@
+Tuxu Community / 图序社区版
+Copyright 2026 Zheng Chenxi and Tuxu Community contributors.
+
+Community application code and the basic templates shipped in this repository
+are available under the Apache License, Version 2.0. See LICENSE.
+
+Advanced private templates, private runtime data, vendor credentials, third-party
+plugin libraries and model weights are not included or relicensed by this project.
+External packages, models, APIs and user-supplied content retain their own terms.
+See THIRD_PARTY_NOTICES.md.

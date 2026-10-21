@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      TUXU_DATA_DIR: ${{ runner.temp }}/tuxu-community-tests
+      TUXU_DATA_DIR: /tmp/tuxu-community-tests
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

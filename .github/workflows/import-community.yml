@@ -1,0 +1,52 @@
+name: Import audited community source
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify and expand audited archive
+        env:
+          SOURCE_SHA256: 88e4429273363ad0e1497af8782015ba3fb5e2796fdce4772e97bbbbbf058c76
+        run: |
+          python3 - <<'IMPORT'
+          import base64, hashlib, io, os, stat, zipfile
+          from pathlib import Path, PurePosixPath
+          archive = Path('source-package.b64')
+          archive_bytes = base64.b64decode(archive.read_text().strip(), validate=True)
+          assert hashlib.sha256(archive_bytes).hexdigest() == os.environ['SOURCE_SHA256'], 'Archive digest mismatch'
+          allowed_modes = {0o100644, 0o100755}
+          with zipfile.ZipFile(io.BytesIO(archive_bytes)) as source:
+              entries = source.infolist()
+              names = [entry.filename for entry in entries]
+              assert len(names) == len(set(names)) == 72, 'Unexpected or duplicate entries'
+              assert sum(entry.file_size for entry in entries) < 4_000_000, 'Archive exceeds size bound'
+              for entry in entries:
+                  path = PurePosixPath(entry.filename)
+                  mode = entry.external_attr >> 16
+                  assert path.parts and not path.is_absolute() and '..' not in path.parts and '\\' not in entry.filename
+                  assert path.as_posix() == entry.filename and '.git' not in path.parts
+                  assert mode in allowed_modes and not stat.S_ISLNK(mode) and not entry.is_dir()
+                  assert entry.filename != '.github/workflows/import-community.yml'
+                  assert entry.filename != 'source-package.b64'
+                  if path.parts[:2] == ('.github', 'workflows'):
+                      assert entry.filename == '.github/workflows/ci.yml'
+                      assert Path(entry.filename).read_bytes() == source.read(entry), 'CI must be installed unchanged through the web UI'
+              for entry in entries:
+                  path = Path(entry.filename)
+                  path.parent.mkdir(parents=True, exist_ok=True)
+                  path.write_bytes(source.read(entry))
+                  path.chmod((entry.external_attr >> 16) & 0o777)
+          archive.unlink()
+          IMPORT
+      - name: Publish community files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all
+          git commit -m 'Publish audited Tuxu Community v0.1.0 source'
+          git push origin HEAD:main

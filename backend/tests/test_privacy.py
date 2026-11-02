@@ -310,9 +310,11 @@ def test_legacy_asset_and_every_processed_version_serve_metadata_free_pixels(har
 def test_generated_html_disclosure_is_recognized_without_relaxing_source_role(tmp_path):
     output, source, source_bytes, original = source_and_generated_export(tmp_path, 'html')
     raw = output.read_bytes()
-    assert '本示意图由AI生成'.encode() in raw
+    assert '本示意图由AI生成'.encode() not in raw
     hashes = {hashlib.sha256(original).hexdigest()}
     clean_export(raw, '.html', hashes, source_bytes)
-    invalid = raw.replace('本示意图由AI生成'.encode(), '其他未验证标签'.encode())
+    legacy = raw.replace(b'</figcaption>', '</figcaption><p class="ai-disclosure">本示意图由AI生成</p>'.encode())
+    clean_export(legacy, '.html', hashes, source_bytes)
+    invalid = legacy.replace('本示意图由AI生成'.encode(), '其他未验证标签'.encode())
     with pytest.raises(UnsafeLegacyExport):
         clean_export(invalid, '.html', hashes, source_bytes)

@@ -43,5 +43,3 @@ label{display:block;font-size:11px;color:#778970;line-height:1.5;margin-bottom:1
 
 .topbar>.pill{flex-shrink:0;margin-left:12px}
 .style-recommendation{font-size:10px;line-height:1.8;color:#627e4e;background:#f3f7e9;border:1px solid #e0e8d4;border-radius:6px;padding:9px 10px;margin:0 0 14px;grid-column:1/-1;overflow-wrap:anywhere}.style-recommendation>small{display:block;font-size:9px;color:#7f916d;margin-top:4px}.local-agent-message{font-size:11px;line-height:1.9;color:#718960;overflow-wrap:anywhere}.local-agent-settings .checkbox-label{font-size:10px;line-height:1.8}.local-agent-settings .cloud-settings-note{margin-bottom:0}
-
-.inline-figure .ai-disclosure{text-align:center;font-size:12px;line-height:1.8;color:#566149;margin:4px 0 0}

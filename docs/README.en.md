@@ -1,4 +1,4 @@
-# Tuxu Community v0.2.0
+# Tuxu Community v0.2.1
 
 Tuxu is a local-first article illustration workbench. Import DOCX, Markdown or TXT, review illustration suggestions, adjust simple visual direction, approve generation, select an image and export a new document.
 
@@ -26,4 +26,4 @@ AI images can contain missing objects, malformed geometry and incorrect text. Bo
 Read the [Chinese quick start](../README.md), [installation](installation.md), [model setup](models.md), [development](development.md), [contribution guide](contributing.md) and [security policy](security.md). Never include API keys, private documents or task databases in public reports.
 
 
-Version 0.2 adds semantic style suggestions marked as recommended, fourteen visual styles, and an opt-in fixed local-agent runner. Ollama composes image prompts for every route. Native Codex mode requires compatible image tooling and the user's own ChatGPT sign-in; local orchestration does not mean offline or free image inference. Every generated illustration inserted into a new document carries the separate disclosure line `本示意图由AI生成`. See [local-agent setup](local-agent.md) and [public prompt design](prompt-design.md).
+Version 0.2 adds semantic style suggestions marked as recommended, fourteen visual styles, and an opt-in fixed local-agent runner. Ollama composes image prompts for every route. Native Codex mode requires compatible image tooling and the user's own ChatGPT sign-in; local orchestration does not mean offline or free image inference. Every generated illustration keeps the parenthetical AI label in its caption; no duplicate disclosure paragraph is added. See [local-agent setup](local-agent.md) and [public prompt design](prompt-design.md).

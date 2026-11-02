@@ -30,7 +30,7 @@ The local model uses a bounded JSON schema for every scene. Director choices add
 
 Fixed style, lighting and placement controls are compiled before approval. This deterministic compilation makes approved controls explicit; it does not replace the local model's scene composition. The approved snapshot binds the exact resulting prompt. The later image provider or agent may not rewrite it.
 
-When a generated figure is inserted into an article, its numbered caption is followed by the separate text line `本示意图由AI生成` in the insertion preview and each export format. Rendering/export adds this line deterministically. It is not part of the image prompt or image pixels. Original source media and zero-image plans receive no added disclosure line.
+When a generated figure is inserted into an article, its numbered caption includes the parenthetical AI-generated label in the insertion preview and each export format. No additional duplicate disclosure paragraph is added. Original source media and zero-image plans receive no added AI label.
 
 Request evidence distinguishes a started request, a completed response, and a validated result. Invalid JSON, missing scene IDs, unusable English or failed local calls stop the operation. Mock tests validate these boundaries; they are not evidence of real image quality. A real local-model sample and an image displayed in the application are separate acceptance steps.
 

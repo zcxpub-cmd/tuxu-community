@@ -706,7 +706,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         service.local_agent.stop()
         service.executor.shutdown(wait=False, cancel_futures=True)
 
-    app = FastAPI(title='图序社区版 · Tuxu Community', version='0.2.0', lifespan=lifespan)
+    app = FastAPI(title='图序社区版 · Tuxu Community', version='0.2.1', lifespan=lifespan)
     app.state.service = service
 
     @app.exception_handler(RequestValidationError)
@@ -750,7 +750,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         preferred = next((p['id'] for p in cloud['profiles'] if p.get('ready') and
                           p.get('verification', {}).get('generation') == 'succeeded' and
                           p.get('verification', {}).get('connection') != 'failed'), 'local')
-        return {'application': {'id': 'tuxu-community', 'version': '0.2.0'},
+        return {'application': {'id': 'tuxu-community', 'version': '0.2.1'},
                 'token': service.store.token, 'genres': GENRES, 'tasks': [public(t) for t in service.store.list()],
                 'models': {'ollama': text, 'comfy': image, 'cloud': cloud, 'local_agent': service.local_agent.status()}, 'defaults': {'text_model': text.get('model', TEXT_MODEL),
                 'image_provider': preferred,

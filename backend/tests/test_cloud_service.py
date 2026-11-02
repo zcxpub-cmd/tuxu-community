@@ -85,11 +85,11 @@ def result(h, task, body):
         files={'image': ('actual.png', png(), 'image/png')})
 
 
-def test_cloud_approval_needs_no_local_translation_or_nodes(harness):
+def test_cloud_approval_requires_local_prompt_model_but_no_comfy_nodes(harness):
     harness[3].region_available = harness[3].mask_available = False
     task = approved(harness, 'ark')
     private = harness[1].require(task['id'])
-    assert harness[2].prompt_calls == 0
+    assert harness[2].prompt_calls == 1
     assert task['approval']['image_target']['size'] == '2048x2048'
     assert task['approval']['image_targets'][task['plan']['slots'][0]['id']]
     assert private['prompts'] and 'prompts' not in task

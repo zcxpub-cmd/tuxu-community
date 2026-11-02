@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, PointerEvent } from 'react'
 import type { Director, DirectorObject, Slot } from './types'
-import { alignObject, brightnessOptions, cameraOptions, depthLabels, depthOrder, directorFor, directorSummary, fitObject, lightingOptions, moveObject, objectPosition, styleOptions, updateDirector } from './director'
+import { alignObject, brightnessOptions, cameraOptions, depthLabels, depthOrder, directorFor, directorSummary, fitObject, lightingOptions, moveObject, objectPosition, styleChoiceLabel, styleOptions, styleRecommendationFor, updateDirector } from './director'
 
 interface Props {
   slots: Slot[]
@@ -19,6 +19,7 @@ type Drag = { object: DirectorObject; mode: 'move' | 'resize'; pointerId: number
 export default function DirectorPanel({ slots, selectedSlot, style, locked, regionReady, regionError, onSelect, onChange, onApply }: Props) {
   const slot = slots.find(item => item.id === selectedSlot) || slots[0]
   const config = directorFor(slot)
+  const recommendation = styleRecommendationFor(slot)
   const [selectedObject, setSelectedObject] = useState('')
   const [showGrid, setShowGrid] = useState(true)
   const canvas = useRef<HTMLDivElement>(null)
@@ -65,7 +66,8 @@ export default function DirectorPanel({ slots, selectedSlot, style, locked, regi
     <div className="director-slot-tabs" aria-label="选择要调整的画面">{slots.map((item, index) => <button key={item.id} className={item.id === slot.id ? 'selected' : ''} onClick={() => onSelect(item.id)} disabled={locked}><span>画面 {index + 1}</span><strong>{item.caption || '未命名画面'}</strong><small>{directorSummary(item)}</small></button>)}</div>
     <div className="director-layout">
       <section className="card director-controls"><div className="card-bar"><span>选一种画面风格</span></div><fieldset disabled={locked}>
-        <label className="compact-style-selector">画面风格<select value={config.style_id} onChange={event => edit({ style_id: event.target.value as Director['style_id'] })}>{styleOptions.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><div className="style-presets" aria-label="画面风格">{styleOptions.map(item => <button type="button" key={item.id} className={config.style_id === item.id ? 'selected' : ''} aria-pressed={config.style_id === item.id} title={item.detail} onClick={() => edit({ style_id: item.id })}><strong>{item.label}</strong></button>)}</div>
+        <label className="compact-style-selector">画面风格<select value={config.style_id} onChange={event => edit({ style_id: event.target.value as Director['style_id'] })}>{styleOptions.map(item => <option key={item.id} value={item.id}>{styleChoiceLabel(item.id, recommendation)}</option>)}</select></label><div className="style-presets" aria-label="画面风格">{styleOptions.map(item => <button type="button" key={item.id} className={config.style_id === item.id ? 'selected' : ''} aria-pressed={config.style_id === item.id} title={item.detail} onClick={() => edit({ style_id: item.id })}><strong>{styleChoiceLabel(item.id, recommendation)}</strong></button>)}</div>
+        {recommendation && <p className="style-recommendation">{recommendation.reason}<small>可自由切换画风，保存后以你的选择为准。</small></p>}
         {config.style_id === 'inherit' && <div className="director-inherited">文章风格：{style}</div>}
         <label className="director-label">画面想要多亮？</label><div className="director-segments" aria-label="画面明暗度">{brightnessOptions.map(item => <button type="button" key={item.id} className={config.brightness === item.id ? 'selected' : ''} aria-pressed={config.brightness === item.id} title={item.detail} onClick={() => edit({ brightness: item.id })}>{item.label}</button>)}</div>
         {config.objects.length > 0 && <label className="director-background">背景（可选）<input maxLength={300} value={config.background ?? ''} placeholder="例如：白色桌面、林间空地" onChange={event => edit({ background: event.target.value })} /><span className="director-help">只描述背景；留空时根据文章自动安排</span></label>}

@@ -23,13 +23,17 @@ export function imageScopeChanged(approval: Approval | null | undefined, provide
   if (approvedProvider(approval) !== provider || approval.max_attempts !== undefined && approval.max_attempts !== attempts) return true
   if (provider === 'local') return !!approval.checkpoint && approval.checkpoint !== checkpoint
   const target = approval.image_target
-  if (!target || target.model !== targetModel(provider, checkpoint, catalog) || target.quality !== quality) return true
-  const revision = provider === 'codex' ? 'codex-bridge-v1' : catalog?.profiles.find(profile => profile.id === provider)?.revision
+  if (!target || target.model !== targetModel(provider, checkpoint, catalog)) return true
+  // Native image tools choose their own quality. API controls cannot describe or
+  // invalidate that scope; old v1 promises require a fresh explicit approval.
+  if (provider === 'codex') return target.quality !== 'auto' || target.config_revision !== 'codex-bridge-v2'
+  if (target.quality !== quality) return true
+  const revision = catalog?.profiles.find(profile => profile.id === provider)?.revision
   return target.config_revision !== revision
 }
 
 export function approvalRequest(version: number, provider: ImageProvider, checkpoint: string, quality: CloudQuality, attempts: number) {
-  return { version, image_provider: provider, ...(provider === 'local' ? { checkpoint } : { cloud_quality: quality }), max_attempts: attempts, confirm: true }
+  return { version, image_provider: provider, ...(provider === 'local' ? { checkpoint } : provider === 'codex' ? {} : { cloud_quality: quality }), max_attempts: attempts, confirm: true }
 }
 
 export const activeJobStates = ['queued', 'running', 'awaiting_agent']

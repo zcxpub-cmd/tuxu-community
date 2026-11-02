@@ -6,8 +6,9 @@ import re
 import subprocess
 from pathlib import Path
 
-BLOCKED_PARTS = {'.venv', 'node_modules', '.local-data', '.local-models', 'qc', 'work', '.agents', '__pycache__'}
-BLOCKED_NAMES = {'AGENTS.md', 'cloud-providers.json', 'cloud-verification.json'}
+BLOCKED_PARTS = {'.venv', 'node_modules', '.local-data', '.local-models', 'qc', 'work', '.agents', '__pycache__',
+                 'local-agent-requests', 'local-agent-runs', '.agent-runtime'}
+BLOCKED_NAMES = {'AGENTS.md', 'cloud-providers.json', 'cloud-verification.json', 'local-agent.json', 'auth.json'}
 BLOCKED_SUFFIXES = {'.key', '.pem', '.sqlite', '.sqlite3', '.db', '.log', '.zip', '.safetensors', '.ckpt'}
 SECRET = re.compile(r'(?:\bsk-(?:proj-)?[A-Za-z0-9_-]{24,}|\bgh[pousr]_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{40,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)')
 PERSONAL_PATH = re.compile(r'(?:/Users/|/home/)[A-Za-z0-9._-]+/')

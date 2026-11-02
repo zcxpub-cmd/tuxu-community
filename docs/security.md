@@ -1,6 +1,6 @@
 # 安全与数据
 
-图序社区版 v0.1.0 面向本机单用户使用。它不是经过加固的公网多租户服务；请保留回环监听，不要直接将端口转发到公网。
+图序社区版 v0.2.0 面向本机单用户使用。它不是经过加固的公网多租户服务；请保留回环监听，不要直接将端口转发到公网。
 
 ## 数据边界
 
@@ -31,3 +31,8 @@
 私下报告时提供受影响版本、最小脱敏复现、预期与实际行为、影响范围和必要环境信息；不要发送真实密钥或完整数据库。涉及第三方供应商账户的问题，同时使用该供应商的正式支持渠道。
 
 项目不承诺固定响应时限；修复状态以维护者在仓库中发布的信息为准。
+
+
+## Local-agent execution (v0.2)
+
+Only the local terminal can configure a fixed runner. The browser can toggle a validated configuration, never submit an arbitrary executable or prompt path. Submitted or uncertain operations are not automatically run again. Native execution checks the existing ChatGPT account type and disables unrelated tools; it does not use a hidden API-key fallback. Generation output and receipts remain private runtime data and are excluded from publication. CLI capability, account limits and final image quality must still be checked in the user's environment.

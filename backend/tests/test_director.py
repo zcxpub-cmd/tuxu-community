@@ -268,7 +268,7 @@ def test_translator_receives_all_approved_director_details_without_a_new_request
 
 
 @pytest.mark.parametrize('regional', [False, True])
-def test_actual_ollama_request_uses_schema_only_for_regional_single_slot(monkeypatch, regional):
+def test_actual_ollama_request_uses_bounded_schema_for_every_single_slot(monkeypatch, regional):
     import json
     import httpx
     actual_client = httpx.Client
@@ -297,9 +297,10 @@ def test_actual_ollama_request_uses_schema_only_for_regional_single_slot(monkeyp
     sent = requests[0]
     assert sent['keep_alive'] == 0 and sent['stream'] is False
     if not regional:
-        assert sent['format'] == 'json' and sent['options']['temperature'] == 0.15
-        assert 'required schema:' not in sent['messages'][0]['content']
+        assert sent['format'] == OllamaAdapter.scene_prompt_schema(slot) and sent['options']['temperature'] == 0
+        assert json.dumps(sent['format'], ensure_ascii=False) in sent['messages'][0]['content']
         assert 'background_text' not in prompts[slot['id']]
+        assert adapter.last_prompt_evidence[0]['result_valid'] is True
         return
     schema = sent['format']
     assert sent['options']['temperature'] == 0

@@ -26,8 +26,21 @@ assert.equal(targetReady('codex', false, catalog), true)
 assert.equal(targetReady('local', false, catalog), false)
 assert.deepEqual(approvalRequest(4, 'ark', 'private-old-checkpoint', 'high', 1), { version: 4, image_provider: 'ark', cloud_quality: 'high', max_attempts: 1, confirm: true })
 assert.deepEqual(approvalRequest(4, 'local', 'checkpoint', 'high', 1), { version: 4, image_provider: 'local', checkpoint: 'checkpoint', max_attempts: 1, confirm: true })
-const codex = { max_attempts: 1, image_target: { id: 'codex', provider: 'codex', model: 'codex-imagegen', quality: 'medium', config_revision: 'codex-bridge-v1' } }
-assert.equal(imageScopeChanged(codex, 'codex', '', 'medium', 1, catalog), false, 'The actual backend Codex bridge revision remains authorized immediately after approval')
+assert.deepEqual(approvalRequest(4, 'codex', 'private-old-checkpoint', 'high', 1), { version: 4, image_provider: 'codex', max_attempts: 1, confirm: true }, 'Native image tools do not receive a cloud API quality promise')
+const codex = { max_attempts: 1, image_target: { id: 'codex', provider: 'codex', model: 'codex-imagegen', quality: 'auto', config_revision: 'codex-bridge-v2' } }
+const savedCodex = JSON.stringify(codex)
+for (const apiQuality of ['medium', 'high']) {
+  assert.equal(imageScopeChanged(codex, 'codex', '', apiQuality, 1, catalog), false, 'Native auto quality is independent of inactive API controls')
+}
+for (const quality of ['medium', 'high']) {
+  assert.equal(imageScopeChanged({ ...codex, image_target: { ...codex.image_target, quality } }, 'codex', '', quality, 1, catalog), true, 'A native approval must freeze auto quality rather than an API quality')
+}
+const oldCodex = { ...codex, image_target: { ...codex.image_target, quality: 'medium', config_revision: 'codex-bridge-v1' } }
+const savedOldCodex = JSON.stringify(oldCodex)
+assert.equal(imageScopeChanged(oldCodex, 'codex', '', 'medium', 1, catalog), true, 'Historical v1 approvals need explicit confirmation for native v2')
+assert.equal(imageScopeChanged({ ...codex, image_target: { ...codex.image_target, config_revision: 'codex-bridge-v1' } }, 'codex', '', 'medium', 1, catalog), true, 'Changing only legacy quality to auto is insufficient to inherit v2 authorization')
+assert.equal(JSON.stringify(oldCodex), savedOldCodex, 'Reading an old approval never rewrites its saved hash')
+assert.equal(JSON.stringify(codex), savedCodex)
 assert.equal(imageScopeChanged({ ...codex, image_target: { ...codex.image_target, config_revision: 'other-bridge' } }, 'codex', '', 'medium', 1, catalog), true, 'A genuinely changed Codex bridge still needs new authorization')
 assert.ok(activeJobStates.includes('awaiting_agent') && activeTaskStates.includes('awaiting_agent'))
 assert.equal(taskStage({ status: 'awaiting_agent', jobs: [], exports: [{ filename: 'old.docx' }], assets: [], approval: {} }), 4, 'An unresolved agent job resumes at waiting state ahead of old exports')
@@ -55,7 +68,7 @@ assert.match(settings, /更换服务地址需重新提供密钥/)
 assert.match(app, /provider !== 'local' \|\| !regionalPlan/, 'Cloud generation bypasses local region-node readiness')
 assert.match(app, /provider === 'openai' \? <label>图片质量/, 'Only the GPT compatible API exposes medium/high quality')
 assert.match(app, /豆包使用 2K 尺寸，具体画质由模型决定/)
-assert.match(app, /GPT 内置按画幅生成，具体质量以实际图片为准/)
-assert.match(app, /文章理解仍在本机完成/)
+assert.match(app, /按所选画幅，质量由本机智能体决定/)
+assert.match(app, /文章分析及提示词仍由本地模型完成/)
 assert.match(app, /网页本身不能独立调用 ChatGPT 账户/)
 console.log('PASS: legacy local approvals; cloud provider/model/revision/quality freeze; independent readiness; waiting-agent locks/recovery; no storage/key echo; explicit outbound scope')

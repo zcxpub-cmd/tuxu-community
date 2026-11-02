@@ -14,7 +14,7 @@ from lxml import etree
 from PIL import Image
 import pytest
 
-from backend.app.documents import MAX_FILE_BYTES, export_document, parse_document, parse_text
+from backend.app.documents import AI_IMAGE_DISCLOSURE, MAX_FILE_BYTES, export_document, parse_document, parse_text
 
 
 def digest(path: Path) -> str:
@@ -84,6 +84,7 @@ def test_docx_preserves_original_and_inserts_at_correct_block(source_docx, tmp_p
     assert ParagraphText(blocks[4]) == "第二段说明三个传感单元。"
     assert blocks[5].find(".//" + qn("w:drawing")) is not None
     assert ParagraphText(blocks[6]) == "图 1 三个传感单元（AI 生成示意图）"
+    assert ParagraphText(blocks[7]) == AI_IMAGE_DISCLOSURE
     # Existing body blocks, table, custom style and original picture remain intact.
     for old, new in zip(list(original.element.body)[:5], blocks[:5]):
         assert canonical(old) == canonical(new)
@@ -102,7 +103,8 @@ def test_docx_preserves_original_and_inserts_at_correct_block(source_docx, tmp_p
     second = export_document(source_docx, document, {"slots": [slot]}, [chosen], tmp_path / "out", "docx")
     repeated = Document(second)
     assert len(repeated.inline_shapes) == len(original.inline_shapes) + 1
-    assert len(repeated.paragraphs) == len(original.paragraphs) + 2
+    assert len(repeated.paragraphs) == len(original.paragraphs) + 3
+    assert [p.text for p in repeated.paragraphs].count(AI_IMAGE_DISCLOSURE) == 1
     assert digest(source_docx) == source_hash
 
 
@@ -144,7 +146,8 @@ def test_docx_picture_fits_body_fraction_and_preserves_ratio(tmp_path, pixels, p
     assert blocks[2].find(".//" + qn("w:drawing")) is not None
     assert blocks[2].find(".//" + qn("w:keepNext")) is not None
     assert blocks[3].find(".//" + qn("w:keepLines")) is not None
-    assert [canonical(block) for index, block in enumerate(blocks) if index not in (2, 3)] == original_blocks
+    assert ParagraphText(blocks[4]) == AI_IMAGE_DISCLOSURE
+    assert [canonical(block) for index, block in enumerate(blocks) if index not in (2, 3, 4)] == original_blocks
     assert digest(source) == original_hash
 
 
@@ -181,14 +184,17 @@ def test_docx_picture_uses_section_at_insertion_without_moving_break(tmp_path):
     assert all(abs(shape.width / shape.height - 2 / 3) < 0.000001 for shape in shapes)
     blocks = list(result.element.body)
     retained = []
-    skip_caption = False
+    pending_generated_paragraphs = []
     for block in blocks:
         if block.find(".//" + qn("w:drawing")) is not None:
-            skip_caption = True
+            pending_generated_paragraphs = ["caption", "disclosure"]
             continue
-        if skip_caption:
-            assert ParagraphText(block).startswith("图 ")
-            skip_caption = False
+        if pending_generated_paragraphs:
+            expected = pending_generated_paragraphs.pop(0)
+            if expected == "caption":
+                assert ParagraphText(block).startswith("图 ")
+            else:
+                assert ParagraphText(block) == AI_IMAGE_DISCLOSURE
             continue
         retained.append(canonical(block))
     assert retained == source_blocks, "Original text and section breaks must not move or change"
@@ -210,7 +216,7 @@ def test_numbering_follows_source_position_not_selection_order(source_docx, tmp_
     blocks = list(Document(target).element.body)
     assert ParagraphText(blocks[1]) == "第一段说明装置作用。"
     assert ParagraphText(blocks[3]).startswith("图 1 ")
-    assert ParagraphText(blocks[6]) == "第二段说明三个传感单元。"
+    assert ParagraphText(blocks[7]) == "第二段说明三个传感单元。"
 
 
 @pytest.mark.parametrize("mutation", ["revision", "columns", "field", "nested", "floating"])
@@ -382,3 +388,51 @@ def test_duplicate_selection_and_missing_docx_source_rejected(source_docx, tmp_p
         export_document(source_docx, document, {"slots": [slot]}, [chosen, chosen], tmp_path / "out", "docx")
     with pytest.raises(ValueError, match="原始文件"):
         export_document(None, document, {"slots": [slot]}, [chosen], tmp_path / "out", "docx")
+
+
+@pytest.mark.parametrize('format', ['docx', 'markdown', 'html'])
+@pytest.mark.parametrize('count', [0, 2])
+def test_generated_image_disclosure_is_a_separate_line_per_image_not_source_media(source_docx, tmp_path, format, count):
+    """Parse actual exported formats, including same-anchor images and repeat exports."""
+    source_hash = digest(source_docx)
+    document = parse_document(source_docx)
+    image = raster(tmp_path / 'generated-disclosure-test.png')
+    pairs = [selection(document, image, slot_id=f'generated-{index}') for index in range(count)]
+    plan = {'slots': [pair[0] for pair in pairs]}
+    selected = [pair[1] for pair in pairs]
+    for _repeat in range(2):
+        target = export_document(source_docx, document, plan, selected, tmp_path / 'out', format)
+        if format == 'docx':
+            result = Document(target)
+            assert len(result.inline_shapes) == count + 1, 'Original picture remains separate'
+            paragraphs = result.paragraphs
+            disclosures = [index for index, paragraph in enumerate(paragraphs) if paragraph.text == AI_IMAGE_DISCLOSURE]
+            assert len(disclosures) == count
+            for index in disclosures:
+                assert paragraphs[index - 1].text.startswith('图 ')
+                assert AI_IMAGE_DISCLOSURE not in paragraphs[index - 1].text
+                assert paragraphs[index - 2]._p.find('.//' + qn('w:drawing')) is not None
+                assert paragraphs[index - 1].paragraph_format.keep_with_next is True
+        elif format == 'markdown':
+            with zipfile.ZipFile(target) as package:
+                text = package.read('article.md').decode('utf-8')
+            lines = text.splitlines()
+            assert lines.count(AI_IMAGE_DISCLOSURE) == count
+            assert text.count('![原稿图片]') == 1
+            for index, line in enumerate(lines):
+                if line == AI_IMAGE_DISCLOSURE:
+                    assert lines[index - 1] == '' and lines[index - 2].startswith('图 ')
+                    assert lines[index - 3] == '' and lines[index - 4].startswith('![')
+        else:
+            parsed = etree.HTML(target.read_text(encoding='utf-8'))
+            figures = parsed.xpath('//figure')
+            assert len(figures) == count + 1
+            disclosures = parsed.xpath('//figure/p[@class="ai-disclosure"]')
+            assert len(disclosures) == count
+            for disclosure in disclosures:
+                assert disclosure.text == AI_IMAGE_DISCLOSURE
+                assert disclosure.getprevious().tag == 'figcaption'
+                assert AI_IMAGE_DISCLOSURE not in ''.join(disclosure.getprevious().itertext())
+            original = [figure for figure in figures if not figure.xpath('./figcaption')]
+            assert len(original) == 1 and not original[0].xpath('./p')
+        assert digest(source_docx) == source_hash, 'Exports must not modify the original document'

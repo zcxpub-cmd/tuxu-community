@@ -22,12 +22,14 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
-from .director import MASKED_REGIONS_MODE, compile_controls, generation_text, region_areas, validate_director
+from .director import MASKED_REGIONS_MODE, compile_controls, default_director, generation_text, region_areas, validate_director
 from .cloud import CloudConfigStore, CloudImageAdapter, compose_cloud_prompts
 from .models import ComfyAdapter, CompletedRequestError, DEFAULT_STYLE, ModelError, OllamaAdapter, RejectedSubmissionError, TEXT_MODEL
 from .privacy import generated_image_hashes, private_export_copy, private_image_copy, public_error, public_task, sanitize_new_image, UnsafeLegacyExport
 from .store import Store
+from .style_recommendations import apply_recommendation, validate_recommendation
 from .paths import default_data_directory
+from .local_agent import LocalAgentBridge, RUNNING as AGENT_RUNNING
 
 ROOT = Path(__file__).resolve().parents[2]
 GENRES = ['academic', 'news', 'novel', 'report']
@@ -84,7 +86,7 @@ def snapshot(task):
     result = {'document_hash': task['document']['source_hash'], 'plan_version': task['plan']['version'],
               'plan_hash': digest(task['plan']), 'prompt_hash': prompt_hash(task),
               'checkpoint': approval['checkpoint'], 'approval_id': approval['id']}
-    for field in ('image_target', 'image_targets'):
+    for field in ('image_target', 'image_targets', 'local_agent_revision'):
         if field in approval:
             result[field] = copy.deepcopy(approval[field])
     for key in ('document_hash', 'plan_version', 'plan_hash', 'prompt_hash', 'checkpoint'):
@@ -204,6 +206,10 @@ def validate_slots(slots, document):
                 item['director'] = validate_director(slot['director'])
             except ValueError as exc:
                 bad(str(exc))
+        if 'style_recommendation' in slot:
+            recommendation = validate_recommendation(slot['style_recommendation'])
+            if recommendation is not None:
+                item['style_recommendation'] = recommendation
         clean.append(item)
     return clean
 
@@ -221,6 +227,7 @@ class Service:
         self.schedule_lock = threading.Lock()
         self.asset_locks = {}
         self.asset_locks_guard = threading.Lock()
+        self.local_agent = LocalAgentBridge(self)
 
     def asset_lock(self, task_id, asset_id):
         with self.asset_locks_guard:
@@ -340,6 +347,12 @@ class Service:
         if not isinstance(coverage, list) or len(coverage) != len(expected) or set(coverage) != set(expected):
             raise ModelError('全文覆盖校验失败：模型遗漏、重复或创造了段落 ID。未保存不完整方案。')
         slots = validate_slots(result.get('slots'), task['document'])
+        paragraphs = {p['id']: p['text'] for p in task['document']['paragraphs']}
+        slots = [slot if slot.get('style_recommendation') else
+                 apply_recommendation(slot, task['genre'], paragraphs[slot['paragraph_id']]) for slot in slots]
+        for slot in slots:
+            if 'director' not in slot and slot.get('style_recommendation'):
+                slot['director'] = {**default_director(), 'style_id': slot['style_recommendation']['style_id']}
         def change(t):
             if t.get('cancel_requested'):
                 return False
@@ -477,6 +490,80 @@ class Service:
         self.finish(task_id, job_id, 'cancelled' if task.get('cancel_requested') else 'completed',
                     '已停止后续提交；已完成请求的图片已保留。' if task.get('cancel_requested') else '当前授权的候选图片已生成。')
 
+    def claim_agent_image(self, task_id, body, local=False, mode=None):
+        def change(t):
+            j = next((j for j in t['jobs'] if j['id'] == body.get('job_id')), None)
+            if not j or j['status'] != 'awaiting_agent' or not matches(t, j['snapshot']) or t.get('cancel_requested'):
+                bad('协作请求已失效或被取消。', 409)
+            if body.get('approval_id') != j['approval_id'] or j['snapshot'].get('image_target', {}).get('provider') != 'codex':
+                bad('协作授权不匹配。', 409)
+            item = next((s for s in j['submissions'] if s['slot_id'] == body.get('slot_id')), None)
+            if not item or item['state'] != 'awaiting_agent':
+                bad('此画面已被接收或不属于此协作请求。', 409)
+            item['state'], item['claimed_at'] = 'submitted', now()
+            if local:
+                item['local_bridge'], item['bridge_state'] = True, 'submitted'
+                item['bridge_mode'] = mode or 'local-runner'
+            j['message'] = AGENT_RUNNING if local else '当前 Codex 会话已接收此画面，等待真实生图返回。'
+            return {'request_id': item['request_id'], 'job_id': j['id'], 'slot_id': item['slot_id']}
+        _, result = self.update(task_id, change)
+        return result
+
+
+    def complete_agent_image(self, task_id, body, contents):
+        job_id, slot_id, approval_id = body['job_id'], body['slot_id'], body['approval_id']
+        if not contents or len(contents) > 40 * 1024 * 1024:
+            bad('返回图片超过大小限制。', 413)
+        with self.asset_lock(task_id, job_id + ':' + slot_id):
+            t = self.require(task_id)
+            j = next((j for j in t['jobs'] if j['id'] == job_id), None)
+            if not j or j.get('approval_id') != approval_id or not matches(t, j.get('snapshot', {})):
+                bad('返回图片的授权或版本不匹配。', 409)
+            if j['snapshot'].get('image_target', {}).get('provider') != 'codex':
+                bad('此作业不是内置生图协作。', 409)
+            item = next((s for s in j.get('submissions', []) if s['slot_id'] == slot_id), None)
+            if not item:
+                bad('图片图位不属于此作业。', 409)
+            if item['state'] == 'saved':
+                return t
+            if item['state'] != 'submitted' or j['status'] != 'awaiting_agent':
+                bad('此协作请求尚未被接收或已被取消。', 409)
+            slot = next(s for s in j['slots'] if s['id'] == slot_id)
+            asset_id = str(uuid.uuid5(uuid.NAMESPACE_URL, task_id + ':' + item['request_id'] + ':' + slot_id))
+            path = self.directory(task_id) / 'assets' / (asset_id + '.png')
+            path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                import io
+                with Image.open(io.BytesIO(contents)) as actual:
+                    if actual.width * actual.height > 16_777_216 or min(actual.size) < 64:
+                        bad('返回图片像素尺寸不正确。')
+                    if item.get('local_bridge'):
+                        size = j['snapshot']['image_targets'][slot_id]['size']
+                        ratios = {'square': 1, 'landscape': 1.5, 'portrait': 2 / 3}
+                        if size in ratios:
+                            expected_ratio = ratios[size]
+                        else:
+                            target_width, target_height = map(int, size.split('x'))
+                            expected_ratio = target_width / target_height
+                        if abs(actual.width / actual.height / expected_ratio - 1) > .05:
+                            bad('返回图片与批准的画幅比例不符。')
+                    actual.load()
+                    pixels = actual.convert('RGBA' if actual.mode in ('RGBA', 'LA') or 'transparency' in actual.info else 'RGB')
+                    pixels.info.clear()
+                    pixels.save(path, format='PNG', pnginfo=None, exif=b'')
+            except HTTPException:
+                raise
+            except Exception:
+                bad('返回内容不是可读取的图片。')
+            self.save_cloud_result(task_id, job_id, slot, item, path)
+            current = self.require(task_id)
+            current_job = next(j for j in current['jobs'] if j['id'] == job_id)
+            if not any(s['state'] in ('awaiting_agent', 'submitted') for s in current_job['submissions']):
+                self.finish(task_id, job_id, 'cancelled' if current.get('cancel_requested') else 'completed',
+                               '已取消后续协作；已返回图片保留。' if current.get('cancel_requested') else 'GPT 内置协作图片已保存。')
+            return self.require(task_id)
+
+
     def save_cloud_result(self, task_id, job_id, slot, submission, destination):
         task = self.require(task_id)
         job = next(j for j in task['jobs'] if j['id'] == job_id)
@@ -496,6 +583,10 @@ class Service:
                  'processed_url': None, 'processed_width': None, 'processed_height': None,
                  'sha256': hashlib.sha256(destination.read_bytes()).hexdigest(), 'processing': None,
                  'created_at': now(), **snap, 'stale': False}
+        if submission.get('local_bridge'):
+            asset['agent_mode'] = submission.get('bridge_mode', 'local-runner')
+            if asset['agent_mode'] != 'codex-native':
+                asset['source'], asset['model'] = 'local-agent', 'local-agent-runner'
         if slot.get('director'):
             asset['director'] = copy.deepcopy(slot['director'])
             asset['regions'] = copy.deepcopy(prepared.get('regions', []))
@@ -517,6 +608,7 @@ class Service:
         if not matches(task, snap):
             raise ModelError('云端生图授权已失效，未发送请求。')
         agent_mode = snap['image_target']['provider'] == 'codex'
+        service_message = self.local_agent.status()['message']
         for slot in job['slots']:
             task = self.require(task_id)
             job = next(j for j in task['jobs'] if j['id'] == job_id)
@@ -543,7 +635,7 @@ class Service:
                     j['submissions'].append(submission)
                     j['attempts'] += 1
                     t['approval']['attempts_used'] += 1
-                    j['message'] = '已安排 GPT 内置协作，等待当前 Codex 会话执行。' if agent_mode else '正在向所选云端模型发送已确认画面。'
+                    j['message'] = service_message if agent_mode else '正在向所选云端模型发送已确认画面。'
                     if agent_mode:
                         j['request_ids'].append(submission['request_id'])
                 self.update(task_id, intent)
@@ -593,7 +685,7 @@ class Service:
             def waiting(t):
                 j = next(j for j in t['jobs'] if j['id'] == job_id)
                 j['status'] = 'awaiting_agent'
-                j['message'] = '等待当前 Codex 会话使用内置生图并回填图片。'
+                j['message'] = service_message
                 t['status'] = 'generating'
             self.update(task_id, waiting)
         else:
@@ -609,10 +701,12 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
     async def lifespan(app):
         if recover:
             service.recover()
+        service.local_agent.start()
         yield
+        service.local_agent.stop()
         service.executor.shutdown(wait=False, cancel_futures=True)
 
-    app = FastAPI(title='图序社区版 · Tuxu Community', version='0.1.0', lifespan=lifespan)
+    app = FastAPI(title='图序社区版 · Tuxu Community', version='0.2.0', lifespan=lifespan)
     app.state.service = service
 
     @app.exception_handler(RequestValidationError)
@@ -652,19 +746,26 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         text = service.ollama.health()
         image = service.comfy.health()
         checkpoints = image.get('checkpoints', [])
-        cloud = service.cloud_config.list_public()
+        cloud = service.local_agent.catalog()
         preferred = next((p['id'] for p in cloud['profiles'] if p.get('ready') and
                           p.get('verification', {}).get('generation') == 'succeeded' and
                           p.get('verification', {}).get('connection') != 'failed'), 'local')
-        return {'application': {'id': 'tuxu-community', 'version': '0.1.0'},
+        return {'application': {'id': 'tuxu-community', 'version': '0.2.0'},
                 'token': service.store.token, 'genres': GENRES, 'tasks': [public(t) for t in service.store.list()],
-                'models': {'ollama': text, 'comfy': image, 'cloud': cloud}, 'defaults': {'text_model': text.get('model', TEXT_MODEL),
+                'models': {'ollama': text, 'comfy': image, 'cloud': cloud, 'local_agent': service.local_agent.status()}, 'defaults': {'text_model': text.get('model', TEXT_MODEL),
                 'image_provider': preferred,
                 'image_checkpoint': checkpoints[0] if checkpoints else '', 'style': DEFAULT_STYLE}}
 
+    @app.post('/api/local-agent')
+    def configure_local_agent(body: dict):
+        try:
+            return service.local_agent.setup(body)
+        except ValueError:
+            bad('本机智能体设置不正确或尚未在本机配置。', 422)
+
     @app.get('/api/image-providers')
     def image_providers():
-        return service.cloud_config.list_public()
+        return service.local_agent.catalog()
 
     @app.put('/api/image-providers/{provider_id}')
     def configure_image_provider(provider_id: str, body: dict):
@@ -820,14 +921,12 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
                     image_targets = {s['id']: service.cloud_config.target(provider, s['aspect_ratio'], quality)
                                      for s in approved['plan']['slots']}
                     checkpoint = next(iter(image_targets.values()))['model']
-                    prompts = validate_prompts(compose_cloud_prompts(approved['plan']['slots'], approved['plan']['style']),
-                                               approved['plan']['slots'])
-                else:
-                    prompts = approved['prompts']
-                    if (approved['_previous_cloud'] or set(prompts) != {s['id'] for s in approved['plan']['slots']} or any(
-                            slot.get('director', {}).get('objects') for slot in approved['plan']['slots'])):
-                        prompts = service.ollama.prompts(approved['plan']['slots'], approved['plan']['style'], approved['plan']['model'])
-                    prompts = validate_prompts(prompts, approved['plan']['slots'], english=True, require_background=True)
+                # All new approvals, including external image engines and the
+                # local-agent bridge, use the same local text model. No cloud
+                # text-model or rule-based prompt fallback is permitted.
+                prompts = service.ollama.prompts(approved['plan']['slots'], approved['plan']['style'], approved['plan']['model'])
+                prompts = validate_prompts(prompts, approved['plan']['slots'], english=True, require_background=True)
+                if provider == 'local':
                     prompts = validate_prompts(compile_controls(prompts, approved['plan']['slots'], conditioning_mode=MASKED_REGIONS_MODE),
                                                approved['plan']['slots'], english=True, require_background=True)
             def save(t):
@@ -838,11 +937,13 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
                     'plan_version': t['plan']['version'], 'plan_hash': digest(t['plan']),
                     'prompt_hash': prompt_hash(t), 'checkpoint': checkpoint, 'max_attempts': attempts,
                     'attempts_used': 0, 'confirmed_at': now(),
-                    'prompt_source': 'cloud_director_v1' if image_targets else 'ollama_translation_or_user_edit',
-                    'prompt_evidence': [] if image_targets else getattr(service.ollama, 'last_prompt_evidence', [])}
+                    'prompt_source': 'ollama_local_v2',
+                    'prompt_evidence': getattr(service.ollama, 'last_prompt_evidence', [])}
                 if image_targets:
                     t['approval']['image_target'] = copy.deepcopy(next(iter(image_targets.values())))
                     t['approval']['image_targets'] = copy.deepcopy(image_targets)
+                    if provider == 'codex':
+                        t['approval']['local_agent_revision'] = service.local_agent.revision()
                 t['_prompting'] = False
                 t['status'] = 'approved'
                 t['error'] = None
@@ -934,65 +1035,13 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
 
     @app.post('/api/tasks/{task_id}/agent-image-claim')
     def claim_agent_image(task_id: str, body: dict):
-        def change(t):
-            j = next((j for j in t['jobs'] if j['id'] == body.get('job_id')), None)
-            if not j or j['status'] != 'awaiting_agent' or not matches(t, j['snapshot']) or t.get('cancel_requested'):
-                bad('协作请求已失效或被取消。', 409)
-            if body.get('approval_id') != j['approval_id'] or j['snapshot'].get('image_target', {}).get('provider') != 'codex':
-                bad('协作授权不匹配。', 409)
-            item = next((s for s in j['submissions'] if s['slot_id'] == body.get('slot_id')), None)
-            if not item or item['state'] != 'awaiting_agent':
-                bad('此画面已被接收或不属于此协作请求。', 409)
-            item['state'], item['claimed_at'] = 'submitted', now()
-            j['message'] = '当前 Codex 会话已接收此画面，等待真实生图返回。'
-            return {'request_id': item['request_id'], 'job_id': j['id'], 'slot_id': item['slot_id']}
-        _, result = service.update(task_id, change)
-        return result
+        return service.claim_agent_image(task_id, body)
 
     @app.post('/api/tasks/{task_id}/agent-image-result')
     async def complete_agent_image(task_id: str, job_id: str = Form(...), slot_id: str = Form(...),
                                    approval_id: str = Form(...), image: UploadFile = File(...)):
         contents = await image.read(40 * 1024 * 1024 + 1)
-        if not contents or len(contents) > 40 * 1024 * 1024:
-            bad('返回图片超过大小限制。', 413)
-        with service.asset_lock(task_id, job_id + ':' + slot_id):
-            t = service.require(task_id)
-            j = next((j for j in t['jobs'] if j['id'] == job_id), None)
-            if not j or j.get('approval_id') != approval_id or not matches(t, j.get('snapshot', {})):
-                bad('返回图片的授权或版本不匹配。', 409)
-            if j['snapshot'].get('image_target', {}).get('provider') != 'codex':
-                bad('此作业不是内置生图协作。', 409)
-            item = next((s for s in j.get('submissions', []) if s['slot_id'] == slot_id), None)
-            if not item:
-                bad('图片图位不属于此作业。', 409)
-            if item['state'] == 'saved':
-                return public(t)
-            if item['state'] != 'submitted' or j['status'] != 'awaiting_agent':
-                bad('此协作请求尚未被接收或已被取消。', 409)
-            slot = next(s for s in j['slots'] if s['id'] == slot_id)
-            asset_id = str(uuid.uuid5(uuid.NAMESPACE_URL, task_id + ':' + item['request_id'] + ':' + slot_id))
-            path = service.directory(task_id) / 'assets' / (asset_id + '.png')
-            path.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                import io
-                with Image.open(io.BytesIO(contents)) as actual:
-                    if actual.width * actual.height > 16_777_216 or min(actual.size) < 64:
-                        bad('返回图片像素尺寸不正确。')
-                    actual.load()
-                    pixels = actual.convert('RGBA' if actual.mode in ('RGBA', 'LA') or 'transparency' in actual.info else 'RGB')
-                    pixels.info.clear()
-                    pixels.save(path, format='PNG', pnginfo=None, exif=b'')
-            except HTTPException:
-                raise
-            except Exception:
-                bad('返回内容不是可读取的图片。')
-            service.save_cloud_result(task_id, job_id, slot, item, path)
-            current = service.require(task_id)
-            current_job = next(j for j in current['jobs'] if j['id'] == job_id)
-            if not any(s['state'] in ('awaiting_agent', 'submitted') for s in current_job['submissions']):
-                service.finish(task_id, job_id, 'cancelled' if current.get('cancel_requested') else 'completed',
-                               '已取消后续协作；已返回图片保留。' if current.get('cancel_requested') else 'GPT 内置协作图片已保存。')
-            return public(service.require(task_id))
+        return public(service.complete_agent_image(task_id, {'job_id': job_id, 'slot_id': slot_id, 'approval_id': approval_id}, contents))
 
     @app.post('/api/tasks/{task_id}/cancel')
     def cancel(task_id: str, body: dict):

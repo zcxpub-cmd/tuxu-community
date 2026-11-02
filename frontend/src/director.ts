@@ -1,4 +1,4 @@
-import type { Director, DirectorObject, Plan, Slot } from './types'
+import type { Director, DirectorObject, Plan, Slot, StyleRecommendation } from './types'
 
 export const styleOptions: { id: Director['style_id']; label: string; detail: string }[] = [
   { id: 'inherit', label: '沿用方案', detail: '跟随这篇文章的风格' },
@@ -10,7 +10,22 @@ export const styleOptions: { id: Director['style_id']; label: string; detail: st
   { id: 'cinematic', label: '电影氛围', detail: '有故事感的画面' },
   { id: 'three_d', label: '立体质感', detail: '表现物体的体积与材质' },
   { id: 'diagram', label: '清晰示意', detail: '讲清结构与关系' },
+  { id: 'scientific', label: '科研示意', detail: '准确表达科学概念与过程' },
+  { id: 'infographic', label: '信息图解', detail: '梳理步骤、层次与信息关系' },
+  { id: 'architectural', label: '建筑空间', detail: '表现建筑、室内与空间布局' },
+  { id: 'botanical', label: '自然图鉴', detail: '细致呈现自然物的形态特征' },
+  { id: 'paper_cut', label: '剪纸', detail: '纸面层次与简洁轮廓' },
 ]
+/** Recommendation metadata is a hint, never a replacement for a saved director. */
+export function styleRecommendationFor(slot: Slot): StyleRecommendation | undefined {
+  const value = slot.style_recommendation
+  if (!value || value.style_id === ('inherit' as string) || !styleOptions.some(item => item.id === value.style_id) || typeof value.reason !== 'string' || !value.reason.trim()) return undefined
+  return { style_id: value.style_id, reason: value.reason.trim().slice(0, 200), ...(value.source ? { source: value.source } : {}) }
+}
+export function styleChoiceLabel(id: Director['style_id'], recommendation?: StyleRecommendation): string {
+  const label = styleOptions.find(item => item.id === id)?.label || id
+  return `${label}${recommendation?.style_id === id ? '（推荐）' : ''}`
+}
 export const brightnessOptions = [{ id: 'low', label: '偏暗', detail: '柔和暗调，主体清楚' }, { id: 'balanced', label: '自然', detail: '明暗自然、层次平衡' }, { id: 'high', label: '明亮', detail: '通透、轻盈' }] as const
 export const lightingOptions = [{ id: 'soft', label: '柔光' }, { id: 'hard', label: '硬光' }, { id: 'backlit', label: '逆光' }] as const
 export const cameraOptions = [{ id: 'wide', label: '远景 · 看环境' }, { id: 'medium', label: '中景 · 看主体' }, { id: 'closeup', label: '近景 · 看细节' }, { id: 'topdown', label: '俯视 · 看布局' }, { id: 'isometric', label: '等距 · 看结构' }] as const

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { request } from './api'
 import { canAdoptModelTest, cloudDraftChanged, safeModelIds } from './cloudVerification'
 import ProviderVerification from './ProviderVerification'
-import type { CloudCatalog, CloudProfile, CloudTestResult } from './types'
+import LocalAgentSettings from './LocalAgentSettings'
+import type { CloudCatalog, CloudProfile, CloudTestResult, LocalAgentStatus } from './types'
 
 type RefreshSource = 'manual' | 'save' | 'test'
 type Refresh = (source: RefreshSource) => Promise<CloudCatalog>
@@ -78,7 +79,7 @@ function ProviderSettings({ profile, locked, refreshEpoch, onUpdate }: { profile
   </div>
 }
 
-export default function CloudSettings({ catalog, locked, onChange }: { catalog?: CloudCatalog; locked: boolean; onChange: (catalog: CloudCatalog) => void }) {
+export default function CloudSettings({ catalog, localAgent, locked, onChange, onAgentRefresh }: { catalog?: CloudCatalog; localAgent?: LocalAgentStatus; locked: boolean; onChange: (catalog: CloudCatalog) => void; onAgentRefresh: () => Promise<void> }) {
   const [loadError, setLoadError] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshEpoch, setRefreshEpoch] = useState(0)
@@ -100,7 +101,7 @@ export default function CloudSettings({ catalog, locked, onChange }: { catalog?:
     } finally { if (id === loadSequence.current) setRefreshing(false) }
   }
   return <details className="cloud-settings card" onToggle={event => { if (event.currentTarget.open) void refresh('manual').catch(() => setLoadError(true)) }}>
-    <summary>云端生图 API 配置 <span>可选</span></summary>
-    <div className="cloud-settings-body"><p className="muted">可以在导入文章前配置。只在确认生成后发送所选画面的描述与构图，文章理解仍在本机完成。</p><button type="button" className="text-button cloud-refresh" disabled={locked || refreshing} onClick={() => void refresh('manual').catch(() => setLoadError(true))}>{refreshing ? '刷新配置中……' : '刷新配置与验证状态'}</button>{catalog?.profiles.map(profile => <ProviderSettings key={profile.id} profile={profile} locked={locked || refreshing} refreshEpoch={refreshEpoch} onUpdate={refresh} />)}{!catalog && <p className="muted">读取配置中……</p>}{loadError && <p role="alert" className="inline-warning">配置暂未读取，请重新打开此面板或刷新服务。</p>}<p className="cloud-settings-note">GPT 内置生图需要支持生图工具的 Codex 宿主会话协作，无需在此填写密钥。普通浏览器请使用自己的 API 或本地生图服务。</p></div>
+    <summary>生图连接设置 <span>本机智能体 / 云端 API · 可选</span></summary>
+    <div className="cloud-settings-body"><p className="muted">可以在导入文章前配置。文章分析及提示词由本地模型完成；确认生成后，只向所选服务发送冻结的画面提示词。</p><LocalAgentSettings status={localAgent} locked={locked} onRefresh={onAgentRefresh} /><button type="button" className="text-button cloud-refresh" disabled={locked || refreshing} onClick={() => void refresh('manual').then(onAgentRefresh).catch(() => setLoadError(true))}>{refreshing ? '刷新配置中……' : '刷新配置与验证状态'}</button>{catalog?.profiles.map(profile => <ProviderSettings key={profile.id} profile={profile} locked={locked || refreshing} refreshEpoch={refreshEpoch} onUpdate={refresh} />)}{!catalog && <p className="muted">读取配置中……</p>}{loadError && <p role="alert" className="inline-warning">配置暂未读取，请重新打开此面板或刷新服务。</p>}<p className="cloud-settings-note">本机智能体须先在本机完成连接；未连接时不会自动等待人工代跑。网页本身不能独立调用 ChatGPT 账户。也可选择自己的 API 或本地生图服务。</p></div>
   </details>
 }

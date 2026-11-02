@@ -305,3 +305,14 @@ def test_legacy_asset_and_every_processed_version_serve_metadata_free_pixels(har
         assert response.headers['X-Content-SHA256'] == hashlib.sha256(response.content).hexdigest()
         assert_pixels_match(legacy, response.content)
     assert asset_path.read_bytes() == legacy and service.require(task['id']) == before
+
+
+def test_generated_html_disclosure_is_recognized_without_relaxing_source_role(tmp_path):
+    output, source, source_bytes, original = source_and_generated_export(tmp_path, 'html')
+    raw = output.read_bytes()
+    assert '本示意图由AI生成'.encode() in raw
+    hashes = {hashlib.sha256(original).hexdigest()}
+    clean_export(raw, '.html', hashes, source_bytes)
+    invalid = raw.replace('本示意图由AI生成'.encode(), '其他未验证标签'.encode())
+    with pytest.raises(UnsafeLegacyExport):
+        clean_export(invalid, '.html', hashes, source_bytes)

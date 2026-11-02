@@ -14,6 +14,29 @@ STYLES = {
     'cinematic': 'cinematic',
     'three_d': '3D illustration',
     'diagram': 'diagram',
+    'scientific': 'scientific illustration',
+    'infographic': 'information design illustration',
+    'architectural': 'architectural illustration',
+    'botanical': 'botanical illustration',
+    'paper_cut': 'layered paper cut illustration',
+}
+# Original, provider-neutral guidance. These describe visual treatment, never
+# authorize adding subjects, measurements, labels or research claims.
+STYLE_GUIDANCE = {
+    'inherit': 'Follow the supplied overall style while preserving the described facts.',
+    'editorial': 'Use a clear visual hierarchy and a restrained publication illustration.',
+    'photographic': 'Use plausible perspective, visible material texture and one consistent light direction; this is a generated illustration, not documentary evidence.',
+    'watercolor': 'Use translucent pigment, soft edge variation and paper texture while keeping the main subject readable.',
+    'ink': 'Use deliberate ink lines, tonal washes and open space that support the described subject.',
+    'flat': 'Use simple flat shapes, a limited palette and clear separation of the main elements.',
+    'cinematic': 'Use a purposeful viewpoint, spatial depth and scene-motivated lighting; retain the subject rather than adding spectacle.',
+    'three_d': 'Use coherent object volumes, plausible materials and readable depth in a three-dimensional illustration.',
+    'diagram': 'Use simple schematic geometry to show only relationships stated in the scene; exact labels belong outside the generated image.',
+    'scientific': 'Use a legible explanatory scientific illustration; preserve stated structures and distinguish conceptual scale from measurement.',
+    'infographic': 'Organize the stated concepts into a clear visual hierarchy; use only supplied quantities and leave exact text to document layout.',
+    'architectural': 'Emphasize spatial organization, consistent perspective and the materials explicitly described; do not invent a surveyed plan.',
+    'botanical': 'Make the stated plant features legible with careful contours and restrained natural color; do not invent a species diagnosis.',
+    'paper_cut': 'Use separated paper layers, cut edges and modest cast shadows with a readable silhouette.',
 }
 BRIGHTNESS = {
     'low': 'dark',

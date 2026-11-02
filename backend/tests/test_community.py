@@ -11,8 +11,8 @@ import pytest
 def test_community_templates_are_public_short_protocols():
     for name in ('ANALYSIS', 'SYNTHESIS', 'SCENE', 'OBJECT', 'BACKGROUND', 'REPAIR'):
         text = getattr(community_prompts, name)
-        assert isinstance(text, str) and 0 < len(text) < 500
-    assert len(STYLES) == 9 and len(BRIGHTNESS) == 3
+        assert isinstance(text, str) and 0 < len(text) < 1024
+    assert len(STYLES) == 14 and len(BRIGHTNESS) == 3
     prompt = community_prompts.basic_cloud_prompts([{'id': 's', 'description': '一棵树。',
                                                     'director': default_director()}], '简洁插画')['s']
     assert 'tuxu-community-v1' in prompt['text'] and '一棵树。' in prompt['text']
@@ -33,8 +33,8 @@ def test_community_default_directory_is_independent_and_honors_override(monkeypa
 def test_community_bootstrap_identity_and_default_are_standalone(harness):
     client, service, _text, _image = harness
     response = client.get('/api/bootstrap').json()
-    assert response['application'] == {'id': 'tuxu-community', 'version': '0.1.0'}
-    assert client.app.version == '0.1.0'
+    assert response['application'] == {'id': 'tuxu-community', 'version': '0.2.0'}
+    assert client.app.version == '0.2.0'
     assert response['defaults']['image_provider'] == 'local'
     assert not service.store.list()
 
@@ -61,7 +61,10 @@ def test_analysis_uses_explicit_schema_but_keeps_semantic_coverage_check(coverag
         'uniqueItems': True, 'items': {'type': 'string', 'enum': ['heading', 'body']}}
     slots = schema['properties']['slots']
     assert slots['items']['properties']['paragraph_id']['enum'] == ['body']
-    assert set(slots['items']['required']) == {'paragraph_id', 'reason', 'description', 'caption', 'risk', 'aspect_ratio'}
+    assert set(slots['items']['required']) == {'paragraph_id', 'reason', 'description', 'caption', 'risk', 'aspect_ratio', 'style_recommendation'}
+    recommendation = slots['items']['properties']['style_recommendation']
+    assert 'botanical' in recommendation['properties']['style_id']['enum']
+    assert 'inherit' not in recommendation['properties']['style_id']['enum']
 
 
 def test_analysis_actual_http_format_is_schema_and_uses_deterministic_mode(monkeypatch):

@@ -9,8 +9,9 @@ from pathlib import Path
 
 import httpx
 
-from .director import MASKED_REGIONS_MODE, control_text, placement_text
+from .director import MASKED_REGIONS_MODE, STYLE_GUIDANCE, control_text, placement_text
 from . import community_prompts as community
+from .style_recommendations import apply_recommendation, recommendation_schema, style_catalog
 
 TEXT_MODEL = 'qwen2.5vl:7b'
 DEFAULT_STYLE = '社区基础插画：清楚表达原文，无文字。'
@@ -114,6 +115,7 @@ class OllamaAdapter:
         properties['description']['minLength'] = 1
         properties['paragraph_id'] = {'type': 'string', **({'enum': body_ids} if body_ids else {})}
         properties['aspect_ratio'] = {'type': 'string', 'enum': ['landscape', 'square', 'portrait']}
+        properties['style_recommendation'] = recommendation_schema()
         return {'type': 'object', 'additionalProperties': False, 'required': ['summary', 'coverage', 'slots'],
                 'properties': {
                     'summary': {'type': 'string', 'maxLength': 300},
@@ -131,10 +133,12 @@ class OllamaAdapter:
         if len(chunks) > 64:
             raise ModelError('正文过度碎片化，超过 64 个有界阅读块；请合并短段后再分析。')
         summaries, candidates, evidence = [], [], []
+        original_paragraphs = {paragraph['id']: paragraph.get('text', '') for paragraph in document['paragraphs']}
         for index, chunk in enumerate(chunks):
             expected = [p['id'] for p in chunk]
             result = self._chat(model, system, {'genre': genre, 'style': style, 'chunk_index': index + 1,
-                'chunk_count': len(chunks), 'expected_coverage': expected, 'paragraphs': chunk},
+                'chunk_count': len(chunks), 'expected_coverage': expected, 'paragraphs': chunk,
+                'style_catalog': style_catalog()},
                 output_format=self.analysis_schema(chunk))
             coverage = result.get('coverage')
             if (not isinstance(coverage, list) or len(coverage) != len(expected) or
@@ -144,12 +148,21 @@ class OllamaAdapter:
             if not isinstance(slots, list) or len(slots) > 3:
                 raise ModelError('分块配图候选超过限制或格式无效。')
             body_ids = {p['id'] for p in chunk if p['kind'] == 'paragraph' and p.get('insertable', True)}
+            recommendation_evidence = []
             for slot in slots:
                 if not isinstance(slot, dict) or slot.get('paragraph_id') not in body_ids:
                     raise ModelError('分块候选引用了未读取正文或虚构段落。')
                 if any(len(str(slot.get(field, ''))) > bound for field, bound in (
                         ('description', 600), ('reason', 200), ('caption', 200), ('risk', 200))):
                     raise ModelError('分块模型候选输出超过有界综合限制，请重试。')
+                # Source is service evidence, never a model-authored claim. The
+                # helper itself remains idempotent for fresh integration passes.
+                if isinstance(slot.get('style_recommendation'), dict):
+                    slot = {**slot, 'style_recommendation': {
+                        key: value for key, value in slot['style_recommendation'].items() if key != 'source'}}
+                slot = apply_recommendation(slot, genre, original_paragraphs[slot['paragraph_id']])
+                recommendation_evidence.append({'paragraph_id': slot['paragraph_id'],
+                    'style_id': slot['style_recommendation']['style_id'], 'source': slot['style_recommendation']['source']})
                 candidates.append({**slot, 'candidate_id': 'candidate-' + str(len(candidates))})
             summary = str(result.get('summary', ''))
             if len(summary) > 600:
@@ -160,7 +173,8 @@ class OllamaAdapter:
                 'input_sha256': hashlib.sha256(json.dumps(chunk, sort_keys=True, ensure_ascii=False).encode()).hexdigest(),
                 'parts': [{'paragraph_id': p['id'], 'part_index': p['part_index'], 'part_count': p['part_count'],
                            'character_count': len(p['text'])} for p in chunk],
-                'model_evidence': result.get('_model_evidence', {})})
+                'model_evidence': result.get('_model_evidence', {}),
+                'style_recommendation_evidence': recommendation_evidence})
         synthesis_evidence = None
         if len(chunks) == 1:
             chosen, summary = candidates, summaries[0]
@@ -194,6 +208,15 @@ class OllamaAdapter:
                 'read_chunks': evidence, 'coverage_evidence': {'input_character_count': sum(len(p['text']) for p in document['paragraphs']),
                     'read_character_count': sum(e['character_count'] for e in evidence), 'chunk_count': len(chunks),
                     'synthesis': synthesis_evidence, 'all_chunks_validated': True}}
+
+    @staticmethod
+    def scene_prompt_schema(slot):
+        value = {'type': 'object', 'additionalProperties': False, 'required': ['text', 'negative'],
+                 'properties': {'text': {'type': 'string', 'minLength': 1, 'maxLength': 5500},
+                                'negative': {'type': 'string', 'maxLength': 3000}}}
+        return {'type': 'object', 'additionalProperties': False, 'required': ['prompts'], 'properties': {
+            'prompts': {'type': 'object', 'additionalProperties': False, 'required': [slot['id']],
+                        'properties': {slot['id']: value}}}}
 
     @staticmethod
     def regional_prompt_schema(slot):
@@ -358,6 +381,7 @@ class OllamaAdapter:
         return text
 
     def prompts(self, slots, style, model):
+        """Compose all provider inputs locally; failure is never a rule/cloud fallback."""
         system = community.SCENE
         # One slot per request keeps approved user descriptions bounded and releases Ollama after each call.
         prompts = {}
@@ -365,10 +389,16 @@ class OllamaAdapter:
         for slot in slots:
             if slot.get('director', {}).get('background') and not slot['director'].get('objects'):
                 raise ModelError('非空导演背景提示词需要至少一个画面物体。')
-            payload = {'style': style, 'slots': [{'id': slot['id'], 'description': slot['description']}]}
+            aspect = slot.get('aspect_ratio', 'landscape')
+            framing = {'landscape': 'landscape 3:2 horizontal composition',
+                       'square': 'square 1:1 composition',
+                       'portrait': 'portrait 2:3 vertical composition'}
+            payload = {'style': style, 'slots': [{'id': slot['id'], 'description': slot['description'],
+                       'aspect_ratio': aspect, 'framing': framing[aspect]}]}
             if slot.get('director'):
                 payload['slots'][0]['director'] = slot['director']
                 payload['slots'][0]['fixed_visual_controls'] = control_text(slot['director'])
+                payload['slots'][0]['style_guidance'] = STYLE_GUIDANCE[slot['director']['style_id']]
                 if slot['director']['objects']:
                     payload['slots'][0]['fixed_object_placements'] = [
                         {'id': item['id'], 'label': item['label'], 'placement': placement_text(item)}
@@ -389,11 +419,28 @@ class OllamaAdapter:
                     raise
                 evidence.update(request_state='completed', **response.get('_model_evidence', {}))
             else:
-                response = self._chat(model, system, payload)
-                self.last_prompt_evidence.append({'slot_id': slot['id'], **response.get('_model_evidence', {})})
+                evidence = {'slot_id': slot['id'], 'phase': 'scene', 'request_state': 'requesting',
+                    'result_valid': False,
+                    'input_sha256': hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()}
+                self.last_prompt_evidence.append(evidence)
+                try:
+                    response = self._chat(model, system, payload, output_format=self.scene_prompt_schema(slot))
+                except Exception as exc:
+                    evidence.update(request_state='failed', error_type=type(exc).__name__)
+                    raise
+                evidence.update(request_state='completed', **response.get('_model_evidence', {}))
             values = response.get('prompts', {})
             if not isinstance(values, dict) or set(values) != {slot['id']}:
                 raise ModelError('正式提示词转换返回未知或遗漏图位。')
+            if not objects:
+                value = values[slot['id']]
+                if not isinstance(value, dict) or set(value) != {'text', 'negative'}:
+                    raise ModelError('正式提示词转换没有返回有效画面对象。')
+                value['text'] = self.translated_phrase(value.get('text'), 5500)
+                negative = value.get('negative')
+                if not isinstance(negative, str) or len(negative) > 3000 or re.search('[\u4e00-\u9fff]', negative):
+                    raise ModelError('正式排除提示词必须为有界英文文本。')
+                evidence['result_valid'] = True
             if objects:
                 value = values[slot['id']]
                 if not isinstance(value, dict):

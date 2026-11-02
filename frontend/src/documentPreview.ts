@@ -1,5 +1,7 @@
 import type { Asset, Paragraph, Plan, Selection, Slot, Task } from './types'
 
+export const AI_IMAGE_DISCLOSURE = '本示意图由AI生成'
+
 export interface SelectedFigure {
   slot: Slot
   paragraph: Paragraph
@@ -7,6 +9,7 @@ export interface SelectedFigure {
   asset: Asset
   number: number
   caption: string
+  disclosure: string
 }
 
 /** Mirrors backend/app/documents.py: _caption and _validated_selections. */
@@ -31,7 +34,7 @@ export function selectedFigures(task: Pick<Task, 'document' | 'plan' | 'selectio
     return [{ slot, paragraph, selection, asset, slotOrder }]
   })
   rows.sort((a, b) => a.paragraph.source_index - b.paragraph.source_index || a.slotOrder - b.slotOrder)
-  return rows.map((row, index) => ({ ...row, number: index + 1, caption: figureCaption(index + 1, row.slot.caption) }))
+  return rows.map((row, index) => ({ ...row, number: index + 1, caption: figureCaption(index + 1, row.slot.caption), disclosure: AI_IMAGE_DISCLOSURE }))
 }
 
 /** A saved empty plan can export the original without generation approval. */

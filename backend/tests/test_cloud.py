@@ -161,7 +161,8 @@ def test_frozen_targets_ratio_model_no_credentials_and_codex_bridge(configured, 
     if profile == 'openai':
         configured.update('openai', {'api_key': KEY, 'enabled': True})
     target = configured.target(profile, aspect, 'medium')
-    assert target['size'] == size and target['quality'] == 'medium'
+    assert target['size'] == size
+    assert target['quality'] == ('auto' if profile == 'codex' else 'medium')
     assert set(target) == {'id', 'provider', 'model', 'base_url', 'size', 'quality', 'config_revision'}
     assert KEY not in json.dumps(target)
     configured.ensure_target(target)
@@ -170,7 +171,7 @@ def test_frozen_targets_ratio_model_no_credentials_and_codex_bridge(configured, 
     with pytest.raises(ModelError):
         configured.ensure_target(changed)
     if profile == 'codex':
-        assert target['base_url'] == 'codex://imagegen' and target['config_revision'] == 'codex-bridge-v1'
+        assert target['base_url'] == 'codex://imagegen' and target['config_revision'] == 'codex-bridge-v2'
     if profile == 'ark':
         width, height = map(int, size.split('x'))
         assert width * height >= 3_686_400

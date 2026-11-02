@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { canConfirmExport, figureCaption, selectedFigures } from '../src/documentPreview.ts'
+import { AI_IMAGE_DISCLOSURE, canConfirmExport, figureCaption, selectedFigures } from '../src/documentPreview.ts'
 
 const paragraphs = [
   { id: 'first', kind: 'paragraph', text: '第一段', source_index: 0 },
@@ -20,6 +20,8 @@ for (const count of [2, 3]) {
   assert.equal(rows.filter(row => row.paragraph.id === 'first').length, count, 'Every selected image anchored to one paragraph must render')
   assert.deepEqual(ids(rows), slots.map(row => row.id), 'Same-paragraph images retain plan order')
   assert.deepEqual(rows.map(row => row.number), Array.from({ length: count }, (_, index) => index + 1))
+  assert.deepEqual(rows.map(row => row.disclosure), Array(count).fill('本示意图由AI生成'), 'Every inserted generated image has a separate exact disclosure')
+  assert(rows.every(row => !row.caption.includes(AI_IMAGE_DISCLOSURE)), 'Disclosure is independent of the numbered caption')
 }
 
 const reversedPlan = [slot('later', 'second'), slot('earlier', 'first'), slot('same-paragraph', 'first')]
@@ -40,6 +42,11 @@ processedTask.assets[0].processed_url = null
 assert.equal(selectedFigures(processedTask).length, 0, 'Missing processed image cannot be previewed as a valid selection')
 assert.equal(figureCaption(3, '图1 科学流程（AI 生成示意图）'), '图 3 科学流程（AI 生成示意图）')
 assert.equal(figureCaption(1, ''), '图 1 配图示意（AI 生成示意图）')
+assert.equal(AI_IMAGE_DISCLOSURE, '本示意图由AI生成')
+assert.deepEqual(selectedFigures(task([])), [], 'A zero-image plan creates no disclosure rows')
+const sourceMediaTask = task([])
+sourceMediaTask.document.paragraphs = [{ ...paragraphs[0], existing_images: [{ relationship_id: 'rIdOriginal' }] }]
+assert.deepEqual(selectedFigures(sourceMediaTask), [], 'Original document media creates no generated-image disclosure')
 
 const base = { plan: plan([]), selectedCount: 0, approvalId: undefined, unsaved: false, scopeChanged: false, locked: false }
 assert.equal(canConfirmExport(base), true, 'Saved zero-image plans need no approval or checkpoint')

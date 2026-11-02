@@ -442,12 +442,12 @@ class CloudConfigStore:
             return self._public(profile)
 
     def target(self, profile_id, aspect, quality='high'):
-        if aspect not in _SIZES['ark'] or quality not in ('medium', 'high'):
+        if aspect not in _SIZES['ark'] or quality not in (('medium', 'high', 'auto') if profile_id == 'codex' else ('medium', 'high')):
             raise ValueError('云端图片比例或质量无效。')
         if profile_id == 'codex':
             return {'id': 'codex', 'provider': 'codex', 'model': 'codex-imagegen', 'base_url': 'codex://imagegen',
-                    'size': _SIZES['openai'][aspect], 'quality': quality,
-                    'config_revision': 'codex-bridge-v1'}
+                    'size': _SIZES['openai'][aspect], 'quality': 'auto',
+                    'config_revision': 'codex-bridge-v2'}
         if profile_id not in _PROFILES:
             raise ValueError('云端供应商无效。')
         with self.lock:

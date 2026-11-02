@@ -657,6 +657,16 @@ def test_positive_comfy_validation_rejection_releases_unknown_lock_and_allows_pl
 def test_reading_legacy_approved_task_does_not_rewrite_fingerprints_or_add_new_fields(harness):
     client, service, _, _ = harness
     task = approve(client, ready(harness))
+    # v0.2 fresh analysis now adds recommended director defaults. Construct the
+    # actual legacy absence before testing read-only compatibility.
+    from backend.app.main import digest
+    def legacy(saved):
+        for slot in saved['plan']['slots']:
+            slot.pop('director', None)
+            slot.pop('style_recommendation', None)
+        saved['approval']['plan_hash'] = digest(saved['plan'])
+    service.update(task['id'], legacy)
+    task = client.get('/api/tasks/' + task['id']).json()
     before = service.require(task['id'])
     fetched = client.get('/api/tasks/' + task['id']).json()
     client.get('/api/bootstrap')

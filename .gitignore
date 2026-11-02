@@ -25,3 +25,9 @@ AGENTS.md
 cloud-providers.json
 cloud-verification.json
 agent-prompts/
+
+# Local agent execution state and receipts are private runtime data.
+local-agent.json
+local-agent-runs/
+local-agent-requests/
+.agent-runtime/

@@ -34,6 +34,7 @@ MAX_TEXT_CHARACTERS = 10_000
 MAX_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
 MAX_IMAGE_BYTES = 30 * 1024 * 1024
 MAX_IMAGE_PIXELS = 50_000_000
+AI_IMAGE_DISCLOSURE = "本示意图由AI生成"
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 NS = {"w": W_NS, "a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
 _HEADING = re.compile(r"^ {0,3}(#{1,6})\s+(.+?)\s*#*\s*$")
@@ -445,13 +446,20 @@ def _write_docx(source_data: bytes | None, document: dict, rows: list[dict], tar
         caption = doc.add_paragraph()
         caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
         caption.paragraph_format.keep_together = True
-        caption.paragraph_format.keep_with_next = False
+        caption.paragraph_format.keep_with_next = True
         caption.paragraph_format.space_before = Pt(3)
-        caption.paragraph_format.space_after = Pt(8)
+        caption.paragraph_format.space_after = Pt(3)
         _fonts(caption.add_run(row["caption"]), 10.5)
+        disclosure = doc.add_paragraph()
+        disclosure.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        disclosure.paragraph_format.keep_together = True
+        disclosure.paragraph_format.keep_with_next = False
+        disclosure.paragraph_format.space_after = Pt(8)
+        _fonts(disclosure.add_run(AI_IMAGE_DISCLOSURE), 10.5)
         anchor.addnext(picture._p)
         picture._p.addnext(caption._p)
-        last_insert[anchor_id] = caption._p
+        caption._p.addnext(disclosure._p)
+        last_insert[anchor_id] = disclosure._p
     doc.save(target)
 
 
@@ -493,7 +501,7 @@ def _write_markdown(document: dict, rows: list[dict], source_data: bytes | None,
             files[path] = data
             fragments.append(f"![原稿图片]({path})")
         for row in by_paragraph.get(paragraph["id"], []):
-            fragments.append(f"![{_markdown_escape(row['alt_text'])}]({row['bundle_path']})\n\n{_markdown_escape(row['caption'])}")
+            fragments.append(f"![{_markdown_escape(row['alt_text'])}]({row['bundle_path']})\n\n{_markdown_escape(row['caption'])}\n\n{AI_IMAGE_DISCLOSURE}")
         return "\n\n".join(fragments)
 
     if document["format"] == "md" and "source_text" in document:
@@ -563,11 +571,11 @@ def _write_html(document: dict, rows: list[dict], source_data: bytes | None, tar
         for data, format in existing.get(paragraph["id"], []):
             parts.append(f"<figure>{_data_image(data, format, '原稿图片')}</figure>")
         for row in by_paragraph.get(paragraph["id"], []):
-            parts.append(f"<figure>{_data_image(row['image_data'], row['image_format'], row['alt_text'])}<figcaption>{html.escape(row['caption'], quote=True)}</figcaption></figure>")
+            parts.append(f"<figure>{_data_image(row['image_data'], row['image_format'], row['alt_text'])}<figcaption>{html.escape(row['caption'], quote=True)}</figcaption><p class=\"ai-disclosure\">{html.escape(AI_IMAGE_DISCLOSURE, quote=True)}</p></figure>")
     output = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
     output += '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'; base-uri \'none\'; form-action \'none\'">'
     output += f"<title>{html.escape(document.get('title', '文章预览'), quote=True)}</title>"
-    output += '<style>body{font:17px/1.8 Arial,"宋体",serif;max-width:850px;margin:40px auto;padding:0 24px;overflow-wrap:anywhere}figure{text-align:center;margin:24px 0;break-inside:avoid}img{max-width:100%;height:auto}figcaption{font-size:14px;color:#555}table{border-collapse:collapse;width:100%}td{border:1px solid #ccc;padding:8px}p{white-space:pre-wrap}</style></head><body>'
+    output += '<style>body{font:17px/1.8 Arial,"宋体",serif;max-width:850px;margin:40px auto;padding:0 24px;overflow-wrap:anywhere}figure{text-align:center;margin:24px 0;break-inside:avoid}img{max-width:100%;height:auto}figcaption{font-size:14px;color:#555}.ai-disclosure{font-size:14px;color:#555;margin:3px 0 0}table{border-collapse:collapse;width:100%}td{border:1px solid #ccc;padding:8px}p{white-space:pre-wrap}</style></head><body>'
     output += "".join(parts) + "</body></html>"
     target.write_text(output, encoding="utf-8")
 

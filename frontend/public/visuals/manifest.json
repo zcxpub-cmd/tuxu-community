@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "assets": [
+    {
+      "path": "frontend/public/visuals/blackhole.webp",
+      "sha256": "011b2d0528d143ed06fd3cf7680126ac767b78cbe83e1f2c6977ae3e40fb2893",
+      "bytes": 60294,
+      "width": 1672,
+      "height": 941
+    },
+    {
+      "path": "frontend/public/visuals/blackhole.mp4",
+      "sha256": "a9934206a27fe1eb01280478e942b8898f25047900dc8ee1f7b7ff295a45bc01",
+      "bytes": 757884,
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/fold.webp",
+      "sha256": "12ec88e5a80ccab74641e5ca746b8906a86614511a168387dbdb0b1b95fb27f3",
+      "bytes": 84750,
+      "width": 1672,
+      "height": 941
+    },
+    {
+      "path": "frontend/public/visuals/fold.mp4",
+      "sha256": "7d29cbb0715d5c26689b1b617a09915050dcf8f6c0e5bbbde45c5e1d1d5a5a29",
+      "bytes": 728241,
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/stellar.webp",
+      "sha256": "61733f90ea16df675fabecf28ecefcd9f0683c1ec3b8d739b3a59490a5b673c8",
+      "bytes": 102694,
+      "width": 1672,
+      "height": 941
+    },
+    {
+      "path": "frontend/public/visuals/stellar.mp4",
+      "sha256": "0a29545eb1fa1da5bcc79d68730d9bbe81aaa2842f619d8874d3758094bba51d",
+      "bytes": 923199,
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/city.webp",
+      "sha256": "dd0cd0aa4880dafaaf382c173f90627202d87a81a61bb76cd50b75a63e1659a6",
+      "bytes": 145246,
+      "width": 1672,
+      "height": 941
+    },
+    {
+      "path": "frontend/public/visuals/city.mp4",
+      "sha256": "7037e9b6fd87fdff1c02e73d165c5e2283d64eb6c1ca48e837b8a186806bd0b3",
+      "bytes": 986602,
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/field.webp",
+      "sha256": "f4234921d9490349b591c64b5f489b912e73ebaf02ee7f68047e44754541283e",
+      "bytes": 134810,
+      "width": 1672,
+      "height": 941
+    },
+    {
+      "path": "frontend/public/visuals/field.mp4",
+      "sha256": "4c813f7a3574c336c769019a4639e3456a1e6490e63c6f865cba44085aa08792",
+      "bytes": 1265787,
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/mountain.webp",
+      "sha256": "4c3b592a5a7db26b8cea787ce2ee1a53c45d2f79570b803e3ed70ddca4a78867",
+      "bytes": 135804,
+      "width": 1672,
+      "height": 941
+    },
+    {
+      "path": "frontend/public/visuals/mountain.mp4",
+      "sha256": "76a1ee6050f2e2a20a92983dbd2eac87fdab5979f655b0ced13d1de759470590",
+      "bytes": 900897,
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/ocean.webp",
+      "sha256": "82eb9b5b7f37c276c1a40e2f869de019dfd1d10bf17ac665ee3b5ba6e2361068",
+      "bytes": 102080,
+      "width": 1672,
+      "height": 941
+    },
+    {
+      "path": "frontend/public/visuals/ocean.mp4",
+      "sha256": "dd667f534b486349ff43d78abe67139b42c2fc3347c7f42ef99c42c421d42c16",
+      "bytes": 1453492,
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/dna.webp",
+      "sha256": "e76129a54a594e6d8a044801e2db7fb289e6cdef5955c76e3e54bc86602c31c9",
+      "bytes": 76130,
+      "width": 1672,
+      "height": 941
+    },
+    {
+      "path": "frontend/public/visuals/dna.mp4",
+      "sha256": "23ed6aca6fc30dfee386be7f66e6428cbd62c34faa56d4429c009f58fe026b01",
+      "bytes": 1152805,
+      "width": 1280,
+      "height": 720
+    }
+  ]
+}

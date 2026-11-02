@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "assets": [
+    {
+      "path": "docs/screenshots/article.jpg",
+      "sha256": "d76931978f52e92ac4633c0c98f3c28c2e49961490a4b6e0c1aa0e54d0d35da5",
+      "bytes": 103741,
+      "width": 1425,
+      "height": 1209
+    },
+    {
+      "path": "docs/screenshots/authorization.jpg",
+      "sha256": "d5b7dd30660c3fddb304c2118949f26d40f3b4a8701dafdd5e6bb0f2b476d1a9",
+      "bytes": 113112,
+      "width": 1425,
+      "height": 1413
+    },
+    {
+      "path": "docs/screenshots/director.jpg",
+      "sha256": "bfd4408c0c2a0442c9f9627ff5a18660269dea36e251bc66cdfdf4f75579d7c4",
+      "bytes": 168608,
+      "width": 1425,
+      "height": 2211
+    },
+    {
+      "path": "docs/screenshots/document-export.jpg",
+      "sha256": "6bfc621cbca584120d67e53a988dccf0b03b616057f7cecca91b629701bf81c1",
+      "bytes": 126857,
+      "width": 1425,
+      "height": 1469
+    },
+    {
+      "path": "docs/screenshots/home-blackhole.jpg",
+      "sha256": "81c780fd145101f8690c40eff2825b0ab3f9011420b814e73874af003cb589ec",
+      "bytes": 85512,
+      "width": 1440,
+      "height": 1024
+    },
+    {
+      "path": "docs/screenshots/home-city.jpg",
+      "sha256": "142fa7160ec26af5e8bd06f3a0240e3195dd5f501c33c4d408fd0aa492495584",
+      "bytes": 124462,
+      "width": 1440,
+      "height": 1024
+    },
+    {
+      "path": "docs/screenshots/home-dna.jpg",
+      "sha256": "f6cdfa9a85c2b55e69601d691dcaa3321affe7c066f4fb2197352c22fc565383",
+      "bytes": 111114,
+      "width": 1440,
+      "height": 1024
+    },
+    {
+      "path": "docs/screenshots/home-field.jpg",
+      "sha256": "5425a0e3cad3795150b3aab24adffb00de302565e5b5ad3f48b6926bb23d1961",
+      "bytes": 113167,
+      "width": 1440,
+      "height": 1024
+    },
+    {
+      "path": "docs/screenshots/home-fold.jpg",
+      "sha256": "fced730dcdb6d29d04cb1f4b1b5684d04d9fd88a2e442e3fa5ab6bcc75590b9a",
+      "bytes": 96912,
+      "width": 1440,
+      "height": 1024
+    },
+    {
+      "path": "docs/screenshots/home-mountain.jpg",
+      "sha256": "207f77c925109fdfc887ffddd45f2b681ab93fada48df1732d8c66b2c8803c3a",
+      "bytes": 116894,
+      "width": 1440,
+      "height": 1024
+    },
+    {
+      "path": "docs/screenshots/home-ocean.jpg",
+      "sha256": "b1b6a0f980583fc82e8890ae86d41a1a9e996c3c65c992926d598c53c2e93ce0",
+      "bytes": 101749,
+      "width": 1440,
+      "height": 1024
+    },
+    {
+      "path": "docs/screenshots/home-stellar.jpg",
+      "sha256": "b5fdda3bb96d98159dfcdb5a173eb1305868c2408359a76cd82200c9a2c363bc",
+      "bytes": 100320,
+      "width": 1440,
+      "height": 1024
+    },
+    {
+      "path": "docs/screenshots/image-review.jpg",
+      "sha256": "a3f8715e1cc1b808efd517e07347cfd32626256daae25eb7ecc4d573e26fd48f",
+      "bytes": 93357,
+      "width": 1425,
+      "height": 1408
+    },
+    {
+      "path": "docs/screenshots/plan.jpg",
+      "sha256": "f8a5becb3e4655de3a69b1b132b0739be2db9950b890a477f7e08e706b8cb598",
+      "bytes": 146700,
+      "width": 1425,
+      "height": 1726
+    }
+  ]
+}

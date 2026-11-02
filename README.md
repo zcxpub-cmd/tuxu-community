@@ -1,10 +1,18 @@
-# 图序社区版 v0.3.0
+# 图序社区版 v0.4.0
 
 把文章变成可审阅的配图方案，再把选中的画面插入文档。
 
 图序是一个本地运行的开源文章配图工作台。你可以导入科普、新闻、小说或报告，检查建议图位，用简单导演台选择风格、明暗和物体摆放，确认后生成、选图并导出新文档。生成结果需要人工审阅。
 
 **Tuxu Community** is a local-first, open-source article illustration workbench. Review image suggestions, adjust simple visual direction, approve generation with your own provider or a supported Codex host, then export an editable document. See the [short English introduction](docs/README.en.md).
+
+## 界面预览
+
+![图序电影式首页](docs/screenshots/home-blackhole.jpg)
+
+![简明导演台](docs/screenshots/director.jpg)
+
+[查看八套首页与六个关键页面](docs/screenshots.md)。工作台截图使用明确标注的模拟数据，用于展示界面；蓝色测试图片不是生图质量示例。
 
 ## 已有功能
 
@@ -85,3 +93,7 @@ ollama pull qwen2.5vl:7b
 ## 参与开发
 
 参见[开发说明](docs/development.md)和[贡献指南](docs/contributing.md)。请使用自制或明确授权的最小样稿，区分 Mock 验证与真实模型输出。报告安全问题前先阅读[安全报告方式](docs/security.md#报告安全问题)，不要在公开 Issue 上传密钥、数据库或完整稿件。
+
+### 电影式首页与统一工作台
+
+八个场景在每次进入首页时随机取用，浏览中不轮播。720p无声视频支持静态回退与减少动态效果；六步工作台、导演台和设置使用统一样式。见[界面说明](docs/cinematic-ui.md)。

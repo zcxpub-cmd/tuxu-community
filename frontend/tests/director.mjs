@@ -91,7 +91,8 @@ assert.equal(taskStage({ ...task, plan: { slots: [] } }), 1, 'A saved zero-image
 assert.equal(taskStage({ ...task, plan: { slots }, approval: { id: 'legacy-approval' } }), 3, 'Old approved tasks resume at the shifted approval stage')
 assert.equal(taskStage({ ...task, assets: [{ stale: false }] }), 4)
 assert.equal(taskStage({ ...task, assets: [{ stale: true }] }), 0, 'Stale historical images cannot imply current candidates')
-assert.equal(taskStage({ ...task, exports: [{ url: 'legacy.docx' }] }), 5)
+assert.equal(taskStage({ ...task, exports: [{ url: 'legacy.docx' }] }), 0, 'Old export history cannot mark the current revision complete')
+assert.equal(taskStage({ ...task, status: 'exported', exports: [{ url: 'current.docx' }] }), 5)
 
 const exportState = { plan: { slots: [first] }, selectedCount: 1, approvalId: 'approval', unsaved: true, scopeChanged: false, locked: false }
 assert.equal(canConfirmExport(exportState), false, 'An unsaved director change blocks a previously approved selected asset from export')

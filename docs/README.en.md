@@ -1,4 +1,4 @@
-# Tuxu Community v0.3.0
+# Tuxu Community v0.4.0
 
 Tuxu is a local-first article illustration workbench. Import DOCX, Markdown or TXT, review illustration suggestions, adjust simple visual direction, approve generation, select an image and export a new document.
 

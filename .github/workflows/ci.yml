@@ -38,6 +38,8 @@ jobs:
           npm run test:verification
           npm run test:recommendations
           npm run test:agent
+          npm run test:scenes
+          npm run test:workflow
       - name: Backend checks (mocked models only)
         run: python -m pytest -q backend/tests
       - name: Publication file check

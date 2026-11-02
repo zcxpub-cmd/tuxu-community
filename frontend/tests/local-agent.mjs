@@ -25,6 +25,8 @@ try {
   assert.match(render(status, true), /type="checkbox" disabled=""/, 'An active task prevents changing the generation connection')
   assert.doesNotMatch(render({ ...status, available: false, enabled: true }), /type="checkbox" disabled=/, 'A stale enabled connection can still be disabled')
   assert.match(render(status), /文章分析及提示词由本地模型完成/)
+  assert.match(render(status), /通用命令行及本机 HTTP 接入/)
+  assert.match(render({ ...status, label: '我的生图助手' }), /我的生图助手/)
   assert.match(render(status), /图像实际算力由智能体提供方决定/)
   assert.match(render(status), /不代表离线免费/)
   assert.equal((render(status).match(/<input/g) || []).length, 1, 'The UI exposes only an enable switch, not arbitrary command/path/key fields')

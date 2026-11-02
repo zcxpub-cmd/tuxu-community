@@ -1,0 +1,7 @@
+{
+  "kind": "http",
+  "label": "我的本机HTTP生图助手",
+  "endpoint": "http://127.0.0.1:9000/tuxu-image",
+  "timeout_seconds": 600,
+  "revision_files": []
+}

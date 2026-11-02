@@ -1,4 +1,4 @@
-# Tuxu Community v0.2.1
+# Tuxu Community v0.3.0
 
 Tuxu is a local-first article illustration workbench. Import DOCX, Markdown or TXT, review illustration suggestions, adjust simple visual direction, approve generation, select an image and export a new document.
 
@@ -15,7 +15,7 @@ Use macOS/Linux, Python 3.12+ and Node.js 22.18+. Native Windows is not supporte
 
 Open [http://127.0.0.1:8766](http://127.0.0.1:8766). Use `./stop.sh` to stop the app. Data uses a separate `TuxuCommunity` directory; set `TUXU_DATA_DIR` before startup to choose another directory. Environment files are not loaded automatically.
 
-Article analysis currently requires a configured Ollama model. Image generation can use your own cloud API credentials, local ComfyUI, or a supported Codex host session with an image-generation tool. A standalone browser cannot call your ChatGPT account. No API credentials or model weights are included.
+Article analysis requires Ollama. See the [official Hugging Face upstream model](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct), the [Ollama Q4_K_M package](https://ollama.com/library/qwen2.5vl:7b), and [model download/setup](model-download.md). These share the base model but have different formats and memory requirements. No model weights are attached to this release. Image generation can use your own cloud API credentials, local ComfyUI, Codex, or a configured generic command/local HTTP agent with actual image tooling. No accounts or API credentials are included.
 
 ## Scope
 

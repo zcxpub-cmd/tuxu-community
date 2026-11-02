@@ -1,8 +1,8 @@
-# 图序社区版 v0.2.1
+# 图序社区版 v0.3.0
 
 把文章变成可审阅的配图方案，再把选中的画面插入文档。
 
-图序是一个本地运行的开源文章配图工作台。你可以导入论文、新闻、小说或报告，检查建议图位，用简单导演台选择风格、明暗和物体摆放，确认后生成、选图并导出新文档。生成结果需要人工审阅。
+图序是一个本地运行的开源文章配图工作台。你可以导入科普、新闻、小说或报告，检查建议图位，用简单导演台选择风格、明暗和物体摆放，确认后生成、选图并导出新文档。生成结果需要人工审阅。
 
 **Tuxu Community** is a local-first, open-source article illustration workbench. Review image suggestions, adjust simple visual direction, approve generation with your own provider or a supported Codex host, then export an editable document. See the [short English introduction](docs/README.en.md).
 
@@ -16,10 +16,12 @@
 - 生图前明确确认服务、画面范围和尝试上限；修改方案后重新授权。
 - 自带 API 密钥（BYOK）接入豆包/火山方舟或 GPT 兼容图像 API，也可使用本地 ComfyUI。
 - 本机智能体自动生图：一次本机设置后，已授权任务由固定本机 runner 自动执行、验证并回填；包含 Codex 原生模式与通用 runner 协议，见[本机智能体设置](docs/local-agent.md)。不附带账号、密钥或生图额度。
+- 通用 CLI / 本机 HTTP 适配器与配置模板，支持连接其他具备生图能力的本机智能体；[文字模型参数与最低硬件估算](docs/text-model-hardware.md)。
+- 提供 [Hugging Face 官方模型](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) 和 [Ollama 量化版](https://ollama.com/library/qwen2.5vl:7b) 下载入口与安装说明；图序默认使用本机 Q4_K_M 量化版。
 - 候选图片人工选用，轻度中值降噪与 Lanczos 插值放大，导出 DOCX、Markdown 图片包和 HTML；不覆盖原稿。
 - 本地任务记录、版本失效检查、未决请求恢复与云模型验证状态。
 
-“候选模型可见”“API 配置完整”“实际生图成功”是不同状态。供应商权限、账户状态和输出效果以你的实际调用为准。社区版不附带密钥或模型权重。
+“候选模型可见”“API 配置完整”“实际生图成功”是不同状态。供应商权限、账户状态和输出效果以你的实际调用为准。社区版不附带账号、密钥或模型权重，使用上述公开模型入口自行安装。
 
 ## 快速开始
 
@@ -41,6 +43,16 @@
 应用使用独立的 `TuxuCommunity` 用户数据目录。需要自定义时，在启动前设置 `TUXU_DATA_DIR`；不要把密钥、稿件或数据库加入 Git。
 
 完整步骤见[安装与运行](docs/installation.md)和[模型配置](docs/models.md)。
+
+## 文字模型下载
+
+[Hugging Face 官方 Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) 提供上游开源模型，许可为 Apache-2.0。[Ollama qwen2.5vl:7b](https://ollama.com/library/qwen2.5vl:7b) 是图序当前使用的 Q4_K_M 量化包，约6GB。两者是同一基础模型的不同发布格式，原始权重不直接替代 Ollama 模型包，内存估算也不同。详见[模型来源与安装](docs/model-download.md)。
+
+```bash
+ollama pull qwen2.5vl:7b
+```
+
+启动 Ollama 服务后，在图序中使用相同模型名。需要准备应用的 Python/Node 运行环境和自己的生图工具；不附带账号或额度。Mac 的 M1/16GB起点估算仅针对该量化版，详见[硬件估算](docs/text-model-hardware.md)。
 
 ## 从文章到文档
 

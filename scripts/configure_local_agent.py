@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from backend.app.paths import default_data_directory
 from backend.app.local_agent import atomic_json, LocalAgentBridge
+from backend.app.agent_adapter import load_adapter
 
 
 def main():
@@ -17,8 +18,10 @@ def main():
     choice = parser.add_mutually_exclusive_group(required=True)
     choice.add_argument('--codex', type=Path, help='Absolute path to Codex CLI 0.166.0 or newer')
     choice.add_argument('--argv-json', help='Fixed local runner argv as a JSON array; no shell')
+    choice.add_argument('--adapter-config', type=Path, help='Owner-reviewed command or loopback HTTP adapter JSON')
     parser.add_argument('--data-dir', type=Path, default=None)
-    parser.add_argument('--timeout', type=int, default=600)
+    parser.add_argument('--timeout', type=int, default=None)
+    parser.add_argument('--label', help='Short display name for the configured agent')
     parser.add_argument('--enable', action='store_true', help='Opt in to dispatch after approval')
     args = parser.parse_args()
     directory = args.data_dir or default_data_directory()
@@ -27,13 +30,27 @@ def main():
             parser.error('--codex must be absolute')
         config = {'mode': 'codex-native', 'argv': [sys.executable, str(ROOT / 'scripts' / 'codex_image_runner.py'),
                                                  '--codex', str(args.codex)]}
+    elif args.adapter_config:
+        try:
+            adapter, _ = load_adapter(args.adapter_config)
+        except (OSError, ValueError):
+            parser.error('Invalid adapter configuration; check the local adapter documentation')
+        destination = directory / 'local-agent-adapter.json'
+        atomic_json(destination, adapter)
+        config = {'mode': 'local-runner', 'adapter_config': str(destination.resolve()),
+                  'label': adapter['label'], 'argv': [sys.executable, str(ROOT / 'scripts' / 'local_image_runner.py'),
+                                                   '--config', str(destination.resolve())]}
+        if args.timeout is None:
+            args.timeout = adapter['timeout_seconds']
     else:
         try:
             argv = json.loads(args.argv_json)
         except ValueError:
             parser.error('--argv-json must be valid JSON')
         config = {'mode': 'local-runner', 'argv': argv}
-    config.update(enabled=args.enable, timeout_seconds=args.timeout)
+    config.update(enabled=args.enable, timeout_seconds=args.timeout if args.timeout is not None else 600)
+    if args.label is not None:
+        config['label'] = args.label
     # Validate using the same runtime rules before replacing the owner's config.
     class Directory:
         pass

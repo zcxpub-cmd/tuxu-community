@@ -28,6 +28,13 @@ agent-prompts/
 
 # Local agent execution state and receipts are private runtime data.
 local-agent.json
+local-agent-adapter.json
+local-agent-check.json
 local-agent-runs/
 local-agent-requests/
 .agent-runtime/
+
+# Keep local model weights and packaging outputs out of repository history.
+model-dist/
+*.gguf
+*.gguf.part-*

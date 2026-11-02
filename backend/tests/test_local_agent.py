@@ -13,6 +13,7 @@ from backend.app.local_agent import LocalAgentBridge, atomic_json
 from backend.app.main import unresolved
 from backend.tests.test_cloud_service import harness, approved, start, identity, png
 from backend.tests.test_service import docs_double
+from backend.tests.test_agent_adapter import command_config, local_http
 
 
 def configure(service, tmp_path, behavior='success', enabled=True, timeout=5):
@@ -219,3 +220,117 @@ def test_new_durable_tool_free_native_turn_is_terminal_without_replaying(harness
     assert saved['jobs'][-1]['status'] == 'failed' and saved['approval']['attempts_used'] == 0
     assert not unresolved(saved) and not calls.exists()
     assert harness[0].post('/api/tasks/' + task['id'] + '/generate', json=payload).json()['job_id'] == job['id']
+
+
+def configure_adapter(service, tmp_path, code=None):
+    path, script = command_config(tmp_path, code)
+    runner = Path(__file__).resolve().parents[2] / 'scripts' / 'local_image_runner.py'
+    atomic_json(service.local_agent.path, {'mode': 'local-runner', 'enabled': True, 'label': '我的本机助手',
+        'adapter_config': str(path), 'argv': [sys.executable, str(runner), '--config', str(path)], 'timeout_seconds': 1})
+    return path, script
+
+
+def test_adapter_availability_no_invocation_then_automatic_import(harness, tmp_path):
+    path, script = configure_adapter(harness[1], tmp_path)
+    for _ in range(2):
+        state = harness[0].get('/api/bootstrap').json()['models']['local_agent']
+        assert state['available'] and state['label'] == '我的本机助手'
+        assert str(path) not in json.dumps(state)
+    assert not script.with_suffix('.calls').exists()
+    task, _, _ = start(harness, approved(harness))
+    result = finish_automatic(harness, task['id'])
+    assert len(result['assets']) == 1 and result['assets'][0]['source'] == 'local-agent'
+    assert result['assets'][0]['model'] == 'local-agent-runner'
+    assert result['jobs'][-1]['message'] == '本机智能体图片已保存。'
+    harness[1].local_agent.pump()
+    assert script.with_suffix('.calls').read_text() == 'x'
+
+
+def test_http_adapter_automatic_bridge_receives_frozen_request_and_imports(harness, tmp_path, local_http):
+    endpoint, observed, _ = local_http
+    path = tmp_path / 'http.json'
+    atomic_json(path, {'kind': 'http', 'endpoint': endpoint, 'label': '本机HTTP助手'})
+    runner = Path(__file__).resolve().parents[2] / 'scripts' / 'local_image_runner.py'
+    atomic_json(harness[1].local_agent.path, {'mode': 'local-runner', 'enabled': True,
+        'argv': [sys.executable, str(runner), '--config', str(path)], 'adapter_config': str(path), 'timeout_seconds': 3})
+    task, _, _ = start(harness, approved(harness))
+    result = finish_automatic(harness, task['id'])
+    assert len(observed) == 1 and len(result['assets']) == 1
+    job = harness[1].require(task['id'])['jobs'][-1]
+    assert observed[0][1]['prompt'] == job['prompts'][job['slots'][0]['id']]['text']
+    assert 'document' not in observed[0][1]
+    harness[1].recover(); LocalAgentBridge(harness[1]).pump()
+    assert len(observed) == 1
+
+
+@pytest.mark.parametrize('dependency', ['config', 'script', 'declared_file'])
+def test_inner_adapter_dependency_change_invalidates_unclaimed_approval(harness, tmp_path, dependency):
+    service = harness[1]; service.local_agent.stop()
+    path, script = configure_adapter(service, tmp_path)
+    declared = tmp_path / 'agent-version.txt'; declared.write_text('first')
+    body = json.loads(path.read_text()); body['revision_files'] = [str(declared)]; atomic_json(path, body)
+    task = approved(harness)
+    before = service.local_agent.revision()
+    target = path if dependency == 'config' else script if dependency == 'script' else declared
+    stat = target.stat()
+    data = target.read_text()
+    replacement = data.replace('green', 'black') if dependency == 'script' else data.replace('first', 'other') if dependency == 'declared_file' else data.replace('prompt', 'none  ', 1)
+    # Configuration replacement keeps valid JSON/schema; size+mtime preservation also tests inner script hashing.
+    if dependency == 'config':
+        value = json.loads(data); value['label'] = '另一个本机助手'; replacement = json.dumps(value, ensure_ascii=False)
+    target.write_text(replacement); __import__('os').utime(target, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    assert service.local_agent.revision() != before
+    task, _, _ = start(harness, task)
+    service.local_agent.stop_event.clear(); service.local_agent.pump()
+    current = service.require(task['id'])
+    assert current['jobs'][-1]['status'] == 'failed'
+    assert '配置已改变' in current['jobs'][-1]['message']
+    assert not script.with_suffix('.calls').exists()
+
+
+def test_adapter_timeout_kills_process_group_and_restart_never_dispatches_again(harness, tmp_path):
+    import os
+    if os.name != 'posix': pytest.skip('POSIX process-group lifecycle test')
+    service = harness[1]; service.local_agent.stop()
+    code = '''import subprocess,sys,time
+from pathlib import Path
+calls=Path(__file__).with_suffix('.calls'); calls.write_text('x')
+subprocess.Popen([sys.executable,'-c',"import signal,time;from pathlib import Path;signal.signal(signal.SIGTERM,signal.SIG_IGN);Path('descendant-ready').touch();time.sleep(2);Path('descendant-survived').touch()"])
+time.sleep(10)
+'''
+    _, script = configure_adapter(service, tmp_path, code)
+    task, _, _ = start(harness, approved(harness))
+    service.local_agent.stop_event.clear(); service.local_agent.pump()
+    current = service.require(task['id']); item = current['jobs'][-1]['submissions'][0]
+    assert item['bridge_state'] == 'unknown' and script.with_suffix('.calls').read_text() == 'x'
+    assert (service.local_agent.request_directory(item['request_id']) / 'descendant-ready').exists()
+    restarted = LocalAgentBridge(service); restarted.pump(); restarted.pump()
+    assert script.with_suffix('.calls').read_text() == 'x'
+    time.sleep(1.4)
+    assert not (service.local_agent.request_directory(item['request_id']) / 'descendant-survived').exists()
+
+
+@pytest.mark.parametrize('change', ['live_configuration', 'program_file'])
+def test_adapter_claim_uses_frozen_configuration_and_rechecks_programs(harness, tmp_path, monkeypatch, change):
+    service = harness[1]; service.local_agent.stop()
+    path, old = configure_adapter(service, tmp_path)
+    original_claim = service.claim_agent_image
+    other = tmp_path / 'other_agent.py'; other.write_text(old.read_text())
+    def claim(*args, **kwargs):
+        result = original_claim(*args, **kwargs)
+        if change == 'live_configuration':
+            value = json.loads(path.read_text()); value['argv'][1] = str(other); atomic_json(path, value)
+        else:
+            stat = old.stat(); old.write_text(old.read_text().replace('green', 'black'))
+            __import__('os').utime(old, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        return result
+    monkeypatch.setattr(service, 'claim_agent_image', claim)
+    task, _, _ = start(harness, approved(harness))
+    service.local_agent.stop_event.clear(); service.local_agent.pump()
+    current = service.require(task['id'])
+    assert not other.with_suffix('.calls').exists(), 'A new command cannot run under the old approval'
+    if change == 'live_configuration':
+        assert old.with_suffix('.calls').read_text() == 'x' and len(current['assets']) == 1
+    else:
+        assert not old.with_suffix('.calls').exists() and not current['assets']
+        assert current['jobs'][-1]['submissions'][0]['bridge_state'] == 'unknown'

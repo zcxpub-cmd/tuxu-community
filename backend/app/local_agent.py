@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import signal
 import subprocess
 import threading
@@ -72,6 +73,16 @@ class LocalAgentBridge:
             timeout = value.get('timeout_seconds', 600)
             if isinstance(timeout, bool) or not isinstance(timeout, (float, int)) or not 1 <= timeout <= 1800:
                 return None
+            if 'label' in value and (not isinstance(value['label'], str) or
+                    not re.fullmatch(r'[\w .()（）·+\-]{1,60}', value['label'])):
+                return None
+            if 'adapter_config' in value:
+                from .agent_adapter import load_adapter
+                expected = Path(__file__).resolve().parents[2] / 'scripts' / 'local_image_runner.py'
+                if (value['mode'] != 'local-runner' or len(argv) != 4 or Path(argv[1]).resolve() != expected or
+                        argv[2] != '--config' or argv[3] != value['adapter_config']):
+                    return None
+                load_adapter(value['adapter_config'])
             # A native mode must use the shipped runner and an absolute Codex binary.
             if value['mode'] == 'codex-native':
                 expected = Path(__file__).resolve().parents[2] / 'scripts' / 'codex_image_runner.py'
@@ -82,7 +93,6 @@ class LocalAgentBridge:
                     return None
                 version_key = (str(binary), binary.stat().st_mtime_ns)
                 if version_key not in self.version_cache:
-                    import re
                     try:
                         result = subprocess.run([str(binary), '--version'], shell=False, capture_output=True,
                                                 text=True, timeout=3)
@@ -117,11 +127,12 @@ class LocalAgentBridge:
         available = config is not None
         enabled = available and config.get('enabled') is True
         mode = config['mode'] if available else 'unconfigured'
+        label = (config.get('label') or ('Codex 本机智能体' if mode == 'codex-native' else '本机生图智能体')) if available else '本机生图智能体'
         return {'available': available, 'enabled': enabled, 'mode': mode,
-                'label': 'Codex 本机智能体' if mode == 'codex-native' else '本机生图智能体',
+                'label': label,
                 'message': READY if enabled else DISABLED if available else self.unavailable_message}
 
-    def revision(self, config=None):
+    def revision(self, config=None, adapter=None):
         config = config or self.configuration()
         if config is None:
             return 'unconfigured'
@@ -134,6 +145,9 @@ class LocalAgentBridge:
                     'sha256': hashlib.sha256(path.read_bytes()).hexdigest() if stat.st_size <= 2 * 1024 * 1024 else None})
         value = {'mode': config['mode'], 'argv': config['argv'], 'files': files,
                  'timeout_seconds': config['timeout_seconds']}
+        if 'adapter_config' in config:
+            from .agent_adapter import adapter_bundle
+            value['adapter_bundle'] = adapter if adapter is not None else adapter_bundle(config['adapter_config'], config['argv'][0])
         return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
     def catalog(self):
@@ -174,10 +188,14 @@ class LocalAgentBridge:
                 process.terminate()
             process.wait(timeout=2)
         except (OSError, subprocess.TimeoutExpired):
+            pass
+        finally:
+            # A wrapper can exit on TERM while a descendant ignores it. The
+            # owned process group must be killed even after its leader exits.
             try:
                 if os.name == 'posix':
                     os.killpg(process.pid, signal.SIGKILL)
-                else:
+                elif process.poll() is None:
                     process.kill()
             except OSError:
                 pass
@@ -304,7 +322,11 @@ class LocalAgentBridge:
         identity = {'job_id': job_id, 'slot_id': slot_id}
         task = self.service.require(task_id)
         job = next(j for j in task['jobs'] if j['id'] == job_id)
-        if job.get('snapshot', {}).get('local_agent_revision') != self.revision(config):
+        adapter = None
+        if 'adapter_config' in config:
+            from .agent_adapter import adapter_bundle
+            adapter = adapter_bundle(config['adapter_config'], config['argv'][0])
+        if job.get('snapshot', {}).get('local_agent_revision') != self.revision(config, adapter):
             def rejected(task):
                 current = next(j for j in task['jobs'] if j['id'] == job_id)
                 for item in current.get('submissions', []):
@@ -332,6 +354,14 @@ class LocalAgentBridge:
                        'approval_id': identity['approval_id'], 'prompt': prompt,
                        'prompt_sha256': hashlib.sha256(prompt.encode()).hexdigest(),
                        'options': {key: target[key] for key in ('size', 'quality') if key in target}}
+            argv = config['argv']
+            if adapter is not None:
+                # The claimed request executes its approved immutable config copy,
+                # never a subsequently reconfigured owner file. The child checks
+                # all program hashes again before its exclusive start marker.
+                atomic_json(work / 'adapter-config.json', adapter['config'])
+                request['_adapter_bundle'] = adapter
+                argv = [*argv[:-1], str(work / 'adapter-config.json')]
             atomic_json(work / 'request.json', request)
             # Request data travels over stdin; stdout/stderr are deliberately private
             # and discarded. Never execute a command supplied by a browser request.
@@ -342,7 +372,7 @@ class LocalAgentBridge:
                 if self.stop_event.is_set():
                     self._message(task_id, job_id, slot_id, 'unknown', UNKNOWN)
                     return
-                self.process = subprocess.Popen(config['argv'], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                self.process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL, cwd=work, shell=False, env=environment, start_new_session=os.name == 'posix')
             try:
                 self.process.communicate(json.dumps(request, ensure_ascii=False).encode(), timeout=config['timeout_seconds'])

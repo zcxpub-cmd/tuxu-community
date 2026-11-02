@@ -504,7 +504,7 @@ class Service:
             if local:
                 item['local_bridge'], item['bridge_state'] = True, 'submitted'
                 item['bridge_mode'] = mode or 'local-runner'
-            j['message'] = AGENT_RUNNING if local else '当前 Codex 会话已接收此画面，等待真实生图返回。'
+            j['message'] = AGENT_RUNNING if local else '协作智能体已接收此画面，等待真实生图返回。'
             return {'request_id': item['request_id'], 'job_id': j['id'], 'slot_id': item['slot_id']}
         _, result = self.update(task_id, change)
         return result
@@ -520,7 +520,7 @@ class Service:
             if not j or j.get('approval_id') != approval_id or not matches(t, j.get('snapshot', {})):
                 bad('返回图片的授权或版本不匹配。', 409)
             if j['snapshot'].get('image_target', {}).get('provider') != 'codex':
-                bad('此作业不是内置生图协作。', 409)
+                bad('此作业不是本机智能体生图协作。', 409)
             item = next((s for s in j.get('submissions', []) if s['slot_id'] == slot_id), None)
             if not item:
                 bad('图片图位不属于此作业。', 409)
@@ -560,7 +560,7 @@ class Service:
             current_job = next(j for j in current['jobs'] if j['id'] == job_id)
             if not any(s['state'] in ('awaiting_agent', 'submitted') for s in current_job['submissions']):
                 self.finish(task_id, job_id, 'cancelled' if current.get('cancel_requested') else 'completed',
-                               '已取消后续协作；已返回图片保留。' if current.get('cancel_requested') else 'GPT 内置协作图片已保存。')
+                               '已取消后续协作；已返回图片保留。' if current.get('cancel_requested') else '本机智能体图片已保存。')
             return self.require(task_id)
 
 
@@ -706,7 +706,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         service.local_agent.stop()
         service.executor.shutdown(wait=False, cancel_futures=True)
 
-    app = FastAPI(title='图序社区版 · Tuxu Community', version='0.2.1', lifespan=lifespan)
+    app = FastAPI(title='图序社区版 · Tuxu Community', version='0.3.0', lifespan=lifespan)
     app.state.service = service
 
     @app.exception_handler(RequestValidationError)
@@ -750,7 +750,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         preferred = next((p['id'] for p in cloud['profiles'] if p.get('ready') and
                           p.get('verification', {}).get('generation') == 'succeeded' and
                           p.get('verification', {}).get('connection') != 'failed'), 'local')
-        return {'application': {'id': 'tuxu-community', 'version': '0.2.1'},
+        return {'application': {'id': 'tuxu-community', 'version': '0.3.0'},
                 'token': service.store.token, 'genres': GENRES, 'tasks': [public(t) for t in service.store.list()],
                 'models': {'ollama': text, 'comfy': image, 'cloud': cloud, 'local_agent': service.local_agent.status()}, 'defaults': {'text_model': text.get('model', TEXT_MODEL),
                 'image_provider': preferred,

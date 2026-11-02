@@ -1,0 +1,8 @@
+{
+  "kind": "command",
+  "label": "我的命令行生图助手",
+  "argv": ["/absolute/path/to/your-image-agent", "--prompt-file", "{prompt_file}", "--output", "{output_file}"],
+  "stdin": "none",
+  "timeout_seconds": 600,
+  "revision_files": []
+}

@@ -70,5 +70,6 @@ assert.match(app, /provider === 'openai' \? <label>图片质量/, 'Only the GPT 
 assert.match(app, /豆包使用 2K 尺寸，具体画质由模型决定/)
 assert.match(app, /按所选画幅，质量由本机智能体决定/)
 assert.match(app, /文章分析及提示词仍由本地模型完成/)
-assert.match(app, /网页本身不能独立调用 ChatGPT 账户/)
+assert.match(app, /实际图片工具、算力与费用由所连智能体决定/)
+assert.match(app, /图片工具由所连智能体决定/)
 console.log('PASS: legacy local approvals; cloud provider/model/revision/quality freeze; independent readiness; waiting-agent locks/recovery; no storage/key echo; explicit outbound scope')

@@ -16,7 +16,8 @@
     "test:providers": "node tests/image-providers.mjs",
     "test:verification": "node tests/cloud-verification.mjs",
     "test:scenes": "node tests/scene-library.mjs",
-    "test:workflow": "node tests/workflow-resume.mjs"
+    "test:workflow": "node tests/workflow-resume.mjs",
+    "test:native-image": "node tests/native-image-notice.mjs"
   },
   "dependencies": {
     "@gsap/react": "2.1.2",

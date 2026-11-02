@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 from PIL import Image
 
 from backend.app.local_agent import LocalAgentBridge, atomic_json
@@ -334,3 +335,216 @@ def test_adapter_claim_uses_frozen_configuration_and_rechecks_programs(harness, 
     else:
         assert not old.with_suffix('.calls').exists() and not current['assets']
         assert current['jobs'][-1]['submissions'][0]['bridge_state'] == 'unknown'
+
+
+def _synthetic_claimed_receipts(harness, tmp_path, slots=1):
+    """Synthetic protocol receipts only; no native model or external API is called."""
+    import copy
+    import uuid
+    from backend.tests.test_service import ready
+
+    client, service, *_ = harness
+    service.local_agent.stop()
+    calls = configure(service, tmp_path, enabled=False)
+    task = ready(harness)
+    if slots > 1:
+        plan = copy.deepcopy(task['plan'])
+        for _ in range(slots - 1):
+            slot = copy.deepcopy(plan['slots'][0])
+            slot['id'] = str(uuid.uuid4())
+            plan['slots'].append(slot)
+        response = client.put('/api/tasks/' + task['id'] + '/plan', json={
+            'version': plan['version'], 'style': plan['style'], 'slots': plan['slots']})
+        assert response.status_code == 200
+        task = response.json()
+    response = client.post('/api/tasks/' + task['id'] + '/approve', json={
+        'version': task['plan']['version'], 'confirm': True, 'image_provider': 'codex', 'max_attempts': 3})
+    assert response.status_code == 200
+    task, job, _ = start(harness, response.json())
+    receipts = []
+    for slot in job['slots']:
+        body = {'job_id': job['id'], 'slot_id': slot['id'], 'approval_id': job['approval_id']}
+        claimed = service.claim_agent_image(task['id'], body, local=True, mode='codex-native')
+        work = service.local_agent.request_directory(claimed['request_id'])
+        work.mkdir(parents=True)
+        frozen = service.require(task['id'])['jobs'][-1]['prompts'][slot['id']]['text']
+        digest = hashlib.sha256(frozen.encode()).hexdigest()
+        atomic_json(work / 'request.json', {'protocol': 'tuxu-local-image-v1', 'request_id': claimed['request_id'],
+            'approval_id': body['approval_id'], 'prompt': frozen, 'prompt_sha256': digest})
+        Image.new('RGB', (96, 96), 'red').save(work / 'image.png')
+        atomic_json(work / 'result.json', {'status': 'completed', 'mode': 'codex-native',
+            'request_id': claimed['request_id'], 'prompt_sha256': digest, 'image': 'image.png'})
+        atomic_json(work / 'execution-evidence.json', {'fixture_only': True})
+        receipts.append((body, claimed, work))
+    return task, job, receipts, calls
+
+
+@pytest.mark.parametrize('status', [400, 422])
+@pytest.mark.parametrize('detail', ['返回图片像素尺寸不正确。', '返回图片与批准的画幅比例不符。', '返回内容不是可读取的图片。'])
+def test_validated_receipt_known_image_rejection_is_terminal_without_refund_or_replay(harness, tmp_path, monkeypatch, status, detail):
+    from backend.app.local_agent import REJECTED
+    task, job, receipts, calls = _synthetic_claimed_receipts(harness, tmp_path)
+    service = harness[1]
+    before = service.require(task['id'])
+    invocations = []
+    def reject(*args):
+        invocations.append(1)
+        raise HTTPException(status, detail)
+    monkeypatch.setattr(service, 'complete_agent_image', reject)
+    bridge = LocalAgentBridge(service)
+    bridge.pump()
+    # Re-enable the configured fixture runner after terminal rejection: restart
+    # must still never dispatch the already generated request again.
+    config = json.loads(service.local_agent.path.read_text())
+    config['enabled'] = True
+    atomic_json(service.local_agent.path, config)
+    LocalAgentBridge(service).pump()
+    saved = service.require(task['id'])
+    current = saved['jobs'][-1]
+    assert current['status'] == saved['status'] == 'failed'
+    assert current['submissions'][0]['state'] == 'failed'
+    assert current['submissions'][0]['bridge_state'] == 'rejected'
+    assert current['submissions'][0]['rejection'] == current['error'] == REJECTED
+    assert current['attempts'] == before['jobs'][-1]['attempts']
+    assert saved['approval']['attempts_used'] == before['approval']['attempts_used']
+    assert not unresolved(saved) and not saved['assets']
+    assert invocations == [1] and not calls.exists()
+    shown = harness[0].get('/api/tasks/' + task['id']).json()
+    assert detail not in json.dumps(shown) and shown['jobs'][-1]['submissions'][0]['bridge_state'] == 'rejected'
+
+
+@pytest.mark.parametrize('status,detail', [
+    (400, 'PRIVATE_UNKNOWN_DETAIL'), (422, 'PRIVATE_UNKNOWN_DETAIL'),
+    (403, '返回图片与批准的画幅比例不符。'),
+    (409, '返回图片与批准的画幅比例不符。'),
+    (500, '返回图片像素尺寸不正确。'),
+])
+def test_unattributed_http_failure_keeps_original_unknown_claim(harness, tmp_path, monkeypatch, status, detail):
+    task, job, receipts, calls = _synthetic_claimed_receipts(harness, tmp_path)
+    service = harness[1]
+    def reject(*args):
+        raise HTTPException(status, detail)
+    monkeypatch.setattr(service, 'complete_agent_image', reject)
+    LocalAgentBridge(service).pump()
+    saved = service.require(task['id'])
+    current = saved['jobs'][-1]
+    assert current['status'] == 'awaiting_agent' and unresolved(saved)
+    assert current['submissions'][0]['state'] == 'submitted'
+    assert current['submissions'][0]['bridge_state'] == 'unknown'
+    assert 'rejection' not in current['submissions'][0] and not calls.exists()
+    assert detail not in json.dumps(harness[0].get('/api/tasks/' + task['id']).json())
+
+
+@pytest.mark.parametrize('field', ['receipt_request_id', 'receipt_hash', 'request_request_id', 'request_approval', 'request_prompt'])
+def test_changed_receipt_identity_never_becomes_definitive_rejection(harness, tmp_path, monkeypatch, field):
+    task, job, receipts, calls = _synthetic_claimed_receipts(harness, tmp_path)
+    _body, _claim, work = receipts[0]
+    path = work / ('result.json' if field.startswith('receipt_') else 'request.json')
+    record = json.loads(path.read_text())
+    key = {'receipt_request_id': 'request_id', 'receipt_hash': 'prompt_sha256',
+        'request_request_id': 'request_id', 'request_approval': 'approval_id', 'request_prompt': 'prompt'}[field]
+    record[key] = 'tampered-synthetic-value'
+    atomic_json(path, record)
+    def forbidden(*args):
+        raise AssertionError('identity must be checked before completion')
+    monkeypatch.setattr(harness[1], 'complete_agent_image', forbidden)
+    LocalAgentBridge(harness[1]).pump()
+    current = harness[1].require(task['id'])['jobs'][-1]
+    assert current['status'] == 'awaiting_agent'
+    assert current['submissions'][0]['state'] == 'submitted'
+    assert current['submissions'][0]['bridge_state'] == 'unknown' and not calls.exists()
+
+
+def test_rejection_does_not_terminate_changed_approval_during_completion(harness, tmp_path, monkeypatch):
+    task, job, receipts, calls = _synthetic_claimed_receipts(harness, tmp_path)
+    service = harness[1]
+    def change_then_reject(*args):
+        def change(current):
+            current['approval']['id'] = 'new-synthetic-approval'
+            current['status'] = 'approved'
+        service.update(task['id'], change)
+        raise HTTPException(400, '返回图片与批准的画幅比例不符。')
+    monkeypatch.setattr(service, 'complete_agent_image', change_then_reject)
+    LocalAgentBridge(service).pump()
+    saved = service.require(task['id'])
+    assert saved['approval']['id'] == 'new-synthetic-approval' and saved['status'] == 'approved'
+    assert saved['jobs'][-1]['status'] == 'awaiting_agent'
+    assert saved['jobs'][-1]['submissions'][0]['state'] == 'submitted'
+    assert saved['jobs'][-1]['submissions'][0]['bridge_state'] == 'unknown' and not calls.exists()
+
+
+@pytest.mark.parametrize('rejected_index', [0, 1])
+def test_one_rejected_receipt_preserves_other_valid_image_and_aggregates_failed(harness, tmp_path, monkeypatch, rejected_index):
+    task, job, receipts, calls = _synthetic_claimed_receipts(harness, tmp_path, slots=2)
+    service = harness[1]
+    before = service.require(task['id'])
+    original = service.complete_agent_image
+    rejected_slot = receipts[rejected_index][0]['slot_id']
+    def complete(task_id, body, contents):
+        if body['slot_id'] == rejected_slot:
+            raise HTTPException(400, '返回图片与批准的画幅比例不符。')
+        return original(task_id, body, contents)
+    monkeypatch.setattr(service, 'complete_agent_image', complete)
+    LocalAgentBridge(service).pump()
+    saved = service.require(task['id'])
+    current = saved['jobs'][-1]
+    assert current['status'] == saved['status'] == 'failed'
+    assert [item['state'] for item in current['submissions']].count('saved') == 1
+    assert [item['bridge_state'] for item in current['submissions']].count('rejected') == 1
+    assert len(saved['assets']) == 1 and not unresolved(saved)
+    assert current['attempts'] == before['jobs'][-1]['attempts']
+    assert saved['approval']['attempts_used'] == before['approval']['attempts_used']
+    asset = saved['assets'][0]
+    response = harness[0].post('/api/tasks/' + task['id'] + '/select', json={
+        'selections': {asset['slot_id']: {'asset_id': asset['id'], 'use_processed': False}}})
+    assert response.status_code == 200, response.text
+    LocalAgentBridge(service).pump()
+    assert not calls.exists()
+
+
+def test_rejected_receipt_keeps_other_unresolved_slot_pending(harness, tmp_path, monkeypatch):
+    task, job, receipts, calls = _synthetic_claimed_receipts(harness, tmp_path, slots=2)
+    service = harness[1]
+    reject_slot = receipts[0][0]['slot_id']
+    def complete(task_id, body, contents):
+        if body['slot_id'] == reject_slot:
+            raise HTTPException(400, '返回图片像素尺寸不正确。')
+        raise RuntimeError('PRIVATE_UNCERTAIN')
+    monkeypatch.setattr(service, 'complete_agent_image', complete)
+    LocalAgentBridge(service).pump()
+    current = service.require(task['id'])['jobs'][-1]
+    assert current['status'] == 'awaiting_agent'
+    assert [item['state'] for item in current['submissions']] == ['failed', 'submitted']
+    assert [item['bridge_state'] for item in current['submissions']] == ['rejected', 'unknown']
+    assert not calls.exists()
+
+
+@pytest.mark.parametrize('pending_state', ['submitting', 'future_unresolved'])
+def test_rejection_never_terminalizes_another_unrecognized_or_submitting_claim(harness, tmp_path, monkeypatch, pending_state):
+    task, job, receipts, calls = _synthetic_claimed_receipts(harness, tmp_path, slots=2)
+    service = harness[1]
+    def pending(current):
+        current['jobs'][-1]['submissions'][1]['state'] = pending_state
+    service.update(task['id'], pending)
+    def reject(*args):
+        raise HTTPException(400, '返回图片像素尺寸不正确。')
+    monkeypatch.setattr(service, 'complete_agent_image', reject)
+    LocalAgentBridge(service).pump()
+    current = service.require(task['id'])['jobs'][-1]
+    assert current['status'] == 'awaiting_agent'
+    assert [item['state'] for item in current['submissions']] == ['failed', pending_state]
+    assert not calls.exists()
+
+
+def test_cancel_requested_before_definitive_receipt_rejection_remains_cancelled(harness, tmp_path, monkeypatch):
+    task, job, receipts, calls = _synthetic_claimed_receipts(harness, tmp_path)
+    service = harness[1]
+    service.update(task['id'], lambda current: current.update(cancel_requested=True))
+    def reject(*args):
+        raise HTTPException(400, '返回图片像素尺寸不正确。')
+    monkeypatch.setattr(service, 'complete_agent_image', reject)
+    LocalAgentBridge(service).pump()
+    saved = service.require(task['id'])
+    assert saved['status'] == saved['jobs'][-1]['status'] == 'cancelled'
+    assert saved['jobs'][-1]['submissions'][0]['bridge_state'] == 'rejected'
+    assert saved['error'] is None and not calls.exists()

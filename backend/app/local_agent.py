@@ -15,6 +15,8 @@ import threading
 import time
 from pathlib import Path
 
+from fastapi import HTTPException
+
 from .models import ModelError
 
 UNAVAILABLE = '本机智能体未配置或不可用，请先在本机完成设置。'
@@ -26,6 +28,12 @@ CHANGED = '本机智能体配置已改变，请重新确认当前方案。'
 INCOMPATIBLE = 'Codex 版本不兼容，请在本机配置 0.166.0 或更新版本。'
 NATIVE_UNAVAILABLE = 'Codex 原生登录或工具检查未通过，请检查本机 ChatGPT 登录状态。'
 NOT_STARTED = '本机智能体未能启动图片工具，未生成图片，请检查配置后重新确认。'
+REJECTED = '本机智能体已返回图片，但图片校验未通过。请检查画幅或改用其他生图服务；已生成请求不会自动重发。'
+RECEIPT_IMAGE_REJECTIONS = frozenset({
+    '返回图片像素尺寸不正确。',
+    '返回图片与批准的画幅比例不符。',
+    '返回内容不是可读取的图片。',
+})
 
 
 def atomic_json(path, value):
@@ -229,6 +237,35 @@ class LocalAgentBridge:
                 job['message'] = message
         self.service.update(task_id, change)
 
+    def _rejected_receipt(self, task_id, job_id, slot_id, request_id, approval_id, prompt_hash):
+        """Record a known pixel rejection only while the exact validated claim is current."""
+        # The service has already loaded main; defer this import to avoid its startup cycle.
+        from .main import matches
+
+        def rejected(task):
+            job = next((job for job in task['jobs'] if job['id'] == job_id), None)
+            if (not job or job['status'] != 'awaiting_agent' or job.get('approval_id') != approval_id or
+                    not matches(task, job.get('snapshot', {}))):
+                return False
+            item = next((item for item in job.get('submissions', []) if item['slot_id'] == slot_id), None)
+            frozen = job.get('prompts', {}).get(slot_id, {}).get('text')
+            if (not item or item.get('state') != 'submitted' or item.get('local_bridge') is not True or
+                    item.get('request_id') != request_id or not isinstance(frozen, str) or
+                    hashlib.sha256(frozen.encode()).hexdigest() != prompt_hash):
+                return False
+            item['state'], item['bridge_state'], item['rejection'] = 'failed', 'rejected', REJECTED
+            job['message'] = REJECTED
+            # Failed executions still consumed their approved attempt. Other claims
+            # continue independently, and already saved images remain untouched.
+            if all(item.get('state') in ('saved', 'failed', 'not_started') for item in job.get('submissions', [])):
+                status = 'cancelled' if task.get('cancel_requested') else 'failed'
+                job['status'], job['error'] = status, REJECTED if status == 'failed' else None
+                task['status'], task['error'] = status, job['error']
+            return True
+
+        _, changed = self.service.update(task_id, rejected)
+        return changed is True
+
     def _import(self, task_id, job_id, slot_id, item, work):
         receipt = work / 'result.json'
         if not receipt.is_file():
@@ -249,8 +286,16 @@ class LocalAgentBridge:
                     request.get('prompt_sha256') != expected_hash or result.get('image') != 'image.png' or
                     not image.is_file() or image.is_symlink() or image.stat().st_size > 40 * 1024 * 1024):
                 return False
-            self.service.complete_agent_image(task_id, {'job_id': job_id, 'slot_id': slot_id,
-                'approval_id': request['approval_id']}, image.read_bytes())
+            try:
+                self.service.complete_agent_image(task_id, {'job_id': job_id, 'slot_id': slot_id,
+                    'approval_id': request['approval_id']}, image.read_bytes())
+            except HTTPException as exc:
+                # Status alone is insufficient: unknown validation/authorization
+                # failures may not be attributed to the current receipt safely.
+                if exc.status_code in (400, 422) and isinstance(exc.detail, str) and exc.detail in RECEIPT_IMAGE_REJECTIONS:
+                    return self._rejected_receipt(task_id, job_id, slot_id, item['request_id'],
+                        request['approval_id'], expected_hash)
+                return False
             return True
         except Exception:
             return False

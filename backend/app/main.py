@@ -29,7 +29,8 @@ from .privacy import generated_image_hashes, private_export_copy, private_image_
 from .store import Store
 from .style_recommendations import apply_recommendation, validate_recommendation
 from .paths import default_data_directory
-from .local_agent import LocalAgentBridge, RUNNING as AGENT_RUNNING
+from .local_agent import LocalAgentBridge, REJECTED as AGENT_REJECTED, RUNNING as AGENT_RUNNING
+from .image_geometry import fits_requested_canvas, native_canvas_notice
 
 ROOT = Path(__file__).resolve().parents[2]
 GENRES = ['academic', 'news', 'novel', 'report']
@@ -539,13 +540,8 @@ class Service:
                         bad('返回图片像素尺寸不正确。')
                     if item.get('local_bridge'):
                         size = j['snapshot']['image_targets'][slot_id]['size']
-                        ratios = {'square': 1, 'landscape': 1.5, 'portrait': 2 / 3}
-                        if size in ratios:
-                            expected_ratio = ratios[size]
-                        else:
-                            target_width, target_height = map(int, size.split('x'))
-                            expected_ratio = target_width / target_height
-                        if abs(actual.width / actual.height / expected_ratio - 1) > .05:
+                        if not fits_requested_canvas(size, actual.width, actual.height,
+                                native=item.get('bridge_mode') == 'codex-native'):
                             bad('返回图片与批准的画幅比例不符。')
                     actual.load()
                     pixels = actual.convert('RGBA' if actual.mode in ('RGBA', 'LA') or 'transparency' in actual.info else 'RGB')
@@ -556,12 +552,31 @@ class Service:
             except Exception:
                 bad('返回内容不是可读取的图片。')
             self.save_cloud_result(task_id, job_id, slot, item, path)
-            current = self.require(task_id)
-            current_job = next(j for j in current['jobs'] if j['id'] == job_id)
-            if not any(s['state'] in ('awaiting_agent', 'submitted') for s in current_job['submissions']):
-                self.finish(task_id, job_id, 'cancelled' if current.get('cancel_requested') else 'completed',
-                               '已取消后续协作；已返回图片保留。' if current.get('cancel_requested') else '本机智能体图片已保存。')
+            self.finish_agent_if_settled(task_id, job_id, approval_id)
             return self.require(task_id)
+
+    def finish_agent_if_settled(self, task_id, job_id, approval_id):
+        def change(t):
+            j = next((j for j in t['jobs'] if j['id'] == job_id), None)
+            if (not j or j['status'] != 'awaiting_agent' or j.get('approval_id') != approval_id
+                    or not matches(t, j.get('snapshot', {}))):
+                return
+            submissions = j.get('submissions', [])
+            if not submissions or not all(s['state'] in ('saved', 'failed', 'not_started') for s in submissions):
+                return
+            cancelled = t.get('cancel_requested')
+            rejected = any(s['state'] != 'saved' for s in submissions)
+            status = 'cancelled' if cancelled else 'failed' if rejected else 'completed'
+            message = ('已取消后续协作；已返回图片保留。' if cancelled else
+                       AGENT_REJECTED if rejected else '本机智能体图片已保存。')
+            j['status'], j['message'], j['error'] = status, message, message if status == 'failed' else None
+            if status == 'completed':
+                j['progress'] = 1
+            if any(other['id'] != job_id and other['status'] in ('queued', 'running', 'awaiting_agent')
+                   for other in t['jobs']):
+                return
+            t['status'], t['error'] = ('review' if status == 'completed' else status), j['error']
+        self.update(task_id, change)
 
 
     def save_cloud_result(self, task_id, job_id, slot, submission, destination):
@@ -585,7 +600,11 @@ class Service:
                  'created_at': now(), **snap, 'stale': False}
         if submission.get('local_bridge'):
             asset['agent_mode'] = submission.get('bridge_mode', 'local-runner')
-            if asset['agent_mode'] != 'codex-native':
+            if asset['agent_mode'] == 'codex-native':
+                notice = native_canvas_notice(target.get('size'), width, height)
+                if notice:
+                    asset['native_size_notice'] = notice
+            else:
                 asset['source'], asset['model'] = 'local-agent', 'local-agent-runner'
         if slot.get('director'):
             asset['director'] = copy.deepcopy(slot['director'])
@@ -595,6 +614,10 @@ class Service:
                 raise ModelError('返回图片与当前授权不匹配，未插入资产。')
             j = next(j for j in t['jobs'] if j['id'] == job_id)
             item = next(s for s in j['submissions'] if s['slot_id'] == slot['id'])
+            if target['provider'] == 'codex' and (
+                    j['status'] != 'awaiting_agent' or j.get('approval_id') != job.get('approval_id')
+                    or item['state'] != 'submitted' or item.get('request_id') != submission.get('request_id')):
+                bad('此协作请求尚未被接收或已被取消。', 409)
             if not any(a['id'] == asset_id for a in t['assets']):
                 t['assets'].append(asset)
             item['state'] = 'saved'

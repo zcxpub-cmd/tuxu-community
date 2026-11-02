@@ -40,6 +40,7 @@ jobs:
           npm run test:agent
           npm run test:scenes
           npm run test:workflow
+          npm run test:native-image
       - name: Backend checks (mocked models only)
         run: python -m pytest -q backend/tests
       - name: Publication file check

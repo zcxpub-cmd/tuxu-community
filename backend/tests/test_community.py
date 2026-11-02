@@ -33,8 +33,8 @@ def test_community_default_directory_is_independent_and_honors_override(monkeypa
 def test_community_bootstrap_identity_and_default_are_standalone(harness):
     client, service, _text, _image = harness
     response = client.get('/api/bootstrap').json()
-    assert response['application'] == {'id': 'tuxu-community', 'version': '0.2.0'}
-    assert client.app.version == '0.2.0'
+    assert response['application'] == {'id': 'tuxu-community', 'version': '0.2.1'}
+    assert client.app.version == '0.2.1'
     assert response['defaults']['image_provider'] == 'local'
     assert not service.store.list()
 

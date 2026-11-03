@@ -21,7 +21,7 @@ def _write_manifest(root, *, change=None):
     rows = []
     for name in sorted(release.VISUAL_PATHS):
         data = (root / name).read_bytes()
-        width, height = release.VISUAL_DIMENSIONS[Path(name).suffix]
+        width, height = release.VISUAL_DIMENSIONS[name]
         rows.append({'path': name, 'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data), 'width': width, 'height': height})
     manifest = {'schema_version': 1, 'assets': rows}
     if change:
@@ -46,7 +46,7 @@ def _reasons(root, names):
 
 def test_complete_exact_media_set_passes_static_receipts(tree):
     root, names = tree
-    assert release.check_paths(root, names) == {'files_checked': 17, 'issues': []}
+    assert release.check_paths(root, names) == {'files_checked': 37, 'issues': []}
 
 
 def test_text_only_tree_still_needs_no_visual_manifest(tmp_path):
@@ -76,9 +76,20 @@ def test_manifest_must_be_present_in_the_checked_release_set(tree):
     assert 'visual_manifest_invalid' in _reasons(root, names)
 
 
-def test_all_sixteen_media_must_belong_to_the_checked_release_set(tree):
+def test_all_media_must_belong_to_the_checked_release_set(tree):
     root, names = tree
     assert 'visual_asset_missing_from_release' in _reasons(root, names[:-1])
+
+
+def test_new_video_receipt_cannot_use_legacy_video_dimensions(tree):
+    root, names = tree
+
+    def change(manifest):
+        row = next(item for item in manifest['assets'] if item['path'].endswith('/street.mp4'))
+        row.update(width=1280, height=720)
+
+    _write_manifest(root, change=change)
+    assert 'visual_manifest_invalid' in _reasons(root, names)
 
 
 def test_changed_media_content_is_rejected_by_hash(tree):

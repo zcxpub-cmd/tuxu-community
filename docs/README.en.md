@@ -1,10 +1,12 @@
-# Tuxu Community v0.5.0
+# Tuxu Community v0.6.0
 
 Tuxu is a local-first article illustration workbench. Import DOCX, Markdown or TXT, review illustration suggestions, adjust simple visual direction, approve generation, select an image and export a new document.
 
 The UI offers style and brightness choices, optional backgrounds and rough object placement. Export formats are DOCX, a Markdown image bundle and HTML. Image cleanup uses a median filter and Lanczos resizing, not AI super-resolution.
 
-Version 0.5 adds one-click creation for a newly imported article: a bounded authorization covers local analysis, image generation, automatic selection and document export. The manual workflow remains available. Each document allows up to five images, with one attempt per image; failures or uncertain results stop the automatic flow. The workspace now offers light, dark and system appearance in the top bar; the cinematic homepage keeps its existing look. See the [release notes](release-v0.5.0.md) and [workflow guide](one-click-appearance.md).
+Version 0.6 adds ten animated homepage scenes, bringing the collection to eighteen. The app picks a scene when you open or return to the homepage and avoids repeats on consecutive visits. The new five-second clips use a brief fade through their first frame when replaying. The homepage uses a still image when motion is disabled. [Release notes](release-v0.6.0.md)
+
+For a newly imported article, one-click creation can cover local analysis, image generation, automatic selection and document export within a single authorization. The limit is five images with one attempt per image. The automatic flow stops after a failure or an uncertain result. The workspace also offers manual creation and light, dark or system appearance. [Workflow guide](one-click-appearance.md)
 
 ## Run locally
 

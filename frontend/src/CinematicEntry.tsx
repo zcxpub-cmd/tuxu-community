@@ -23,13 +23,53 @@ export default function CinematicEntry({ scene, motionEnabled, onStart, onStudio
   useEffect(() => {
     const element = video.current
     if (!videoActive || !element) return
-    const update = () => {
+    let frame: number | undefined
+    const cancelFrame = () => {
+      if (frame !== undefined) cancelAnimationFrame(frame)
+      frame = undefined
+    }
+    const paintFade = () => {
+      const blend = Math.min(element.currentTime / .28, (element.duration - element.currentTime) / .6)
+      const opacity = Number.isFinite(blend) ? Math.min(1, Math.max(0, blend)) : 0
+      element.style.opacity = String(opacity * opacity * (3 - 2 * opacity))
+    }
+    const renderFrame = () => {
+      frame = undefined
+      if (document.hidden || element.paused) return
+      paintFade()
+      frame = requestAnimationFrame(renderFrame)
+    }
+    const playing = () => {
       if (document.hidden) element.pause()
-      else void element.play().catch(() => { /* The still poster remains available if autoplay is blocked. */ })
+      else if (scene.fadeLoop && frame === undefined) renderFrame()
+    }
+    const update = () => {
+      if (document.hidden) {
+        cancelFrame()
+        element.pause()
+      } else {
+        void element.play().catch(() => { /* The still poster remains available if autoplay is blocked. */ })
+        if (!element.paused && element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) playing()
+      }
+    }
+    element.addEventListener('playing', playing)
+    if (scene.fadeLoop) {
+      element.addEventListener('pause', cancelFrame)
+      element.addEventListener('waiting', cancelFrame)
+      // Native looping seeks back to the first frame. Reveal the matching poster during that seek.
+      element.addEventListener('seeking', paintFade)
     }
     document.addEventListener('visibilitychange', update); update()
-    return () => { document.removeEventListener('visibilitychange', update); element.pause() }
-  }, [videoActive, scene.id])
+    return () => {
+      document.removeEventListener('visibilitychange', update)
+      element.removeEventListener('playing', playing)
+      element.removeEventListener('pause', cancelFrame)
+      element.removeEventListener('waiting', cancelFrame)
+      element.removeEventListener('seeking', paintFade)
+      cancelFrame()
+      element.pause()
+    }
+  }, [videoActive, scene.id, scene.fadeLoop])
   useGSAP(() => {
     const media = gsap.matchMedia()
     media.add('(prefers-reduced-motion: no-preference)', () => {
@@ -59,7 +99,13 @@ export default function CinematicEntry({ scene, motionEnabled, onStart, onStudio
   }, { scope: root, dependencies: [motionEnabled, scene.id, videoActive], revertOnUpdate: true })
 
   return <main ref={root} className="cinematic-entry" data-scene={scene.id} aria-label="图序首页">
-    <div className="entry-parallax" aria-hidden="true"><img className="entry-backdrop" src={scene.url} alt="" fetchPriority="high" />{videoActive && <video key={scene.id} ref={video} className="entry-backdrop entry-video" src={scene.videoUrl} poster={scene.url} muted autoPlay loop playsInline preload="auto" onError={() => setFailedVideo(scene.id)} />}</div>
+    <div className="entry-parallax" aria-hidden="true">
+      <img className="entry-backdrop" src={scene.url} alt="" fetchPriority="high" />
+      {videoActive && <video key={scene.id} ref={video}
+        className={`entry-backdrop entry-video${scene.fadeLoop ? ' entry-video-fade' : ''}`}
+        src={scene.videoUrl} poster={scene.url} muted autoPlay loop playsInline preload="auto"
+        onError={() => setFailedVideo(scene.id)} />}
+    </div>
     <div className="entry-shade" aria-hidden="true" />
     <nav className="entry-nav" aria-label="主导航">
       <div className="entry-brand"><span>图序</span><small>TUXU</small></div>

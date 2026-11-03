@@ -17,15 +17,24 @@ SECRET = re.compile(r'(?:\bsk-(?:proj-)?[A-Za-z0-9_-]{24,}|\bgh[pousr]_[A-Za-z0-
 PERSONAL_PATH = re.compile(r'(?:/Users/|/home/)[A-Za-z0-9._-]+/')
 BINARY_SECRET = re.compile(SECRET.pattern.encode('ascii'))
 BINARY_PERSONAL_PATH = re.compile(PERSONAL_PATH.pattern.encode('ascii'))
-SCENE_IDS = ('blackhole', 'fold', 'stellar', 'city', 'field', 'mountain', 'ocean', 'dna')
+LEGACY_SCENE_IDS = ('blackhole', 'fold', 'stellar', 'city', 'field', 'mountain', 'ocean', 'dna')
+MOTION_SCENE_IDS = ('street', 'village', 'forest', 'lake', 'desert', 'rice', 'milkyway', 'cells', 'molecules', 'garden')
 VISUAL_ROOT = 'frontend/public/visuals'
 VISUAL_MANIFEST = f'{VISUAL_ROOT}/manifest.json'
 VISUAL_LIMITS = {'.webp': 512 * 1024, '.mp4': 4 * 1024 * 1024}
-VISUAL_DIMENSIONS = {'.webp': (1672, 941), '.mp4': (1280, 720)}
-VISUAL_PATHS = frozenset(f'{VISUAL_ROOT}/{scene}{suffix}' for scene in SCENE_IDS for suffix in VISUAL_LIMITS)
+VISUAL_DIMENSIONS = {
+    f'{VISUAL_ROOT}/{scene}{suffix}': dimensions
+    for scene in LEGACY_SCENE_IDS
+    for suffix, dimensions in {'.webp': (1672, 941), '.mp4': (1280, 720)}.items()
+}
+VISUAL_DIMENSIONS.update({
+    f'{VISUAL_ROOT}/{scene}{suffix}': (1012, 720)
+    for scene in MOTION_SCENE_IDS for suffix in VISUAL_LIMITS
+})
+VISUAL_PATHS = frozenset(VISUAL_DIMENSIONS)
 SCREENSHOT_ROOT = 'docs/screenshots'
 SCREENSHOT_MANIFEST = f'{SCREENSHOT_ROOT}/manifest.json'
-SCREENSHOT_NAMES = tuple(f'home-{scene}' for scene in SCENE_IDS) + (
+SCREENSHOT_NAMES = tuple(f'home-{scene}' for scene in LEGACY_SCENE_IDS) + (
     'article', 'plan', 'director', 'authorization', 'image-review', 'document-export',
 )
 SCREENSHOT_PATHS = frozenset(f'{SCREENSHOT_ROOT}/{name}.jpg' for name in SCREENSHOT_NAMES)
@@ -73,7 +82,7 @@ def _media_manifest(root, names, issues, *, allowed_paths, manifest_name, limits
             if (not isinstance(row['sha256'], str) or re.fullmatch(r'[a-f0-9]{64}', row['sha256']) is None or
                     type(row['bytes']) is not int or not 0 < row['bytes'] <= limits[suffix] or
                     type(row['width']) is not int or type(row['height']) is not int or
-                    not dimension_check(suffix, row['width'], row['height'])):
+                    not dimension_check(name, row['width'], row['height'])):
                 raise ValueError
             entries[name] = row
         if set(entries) != allowed_paths:
@@ -89,10 +98,10 @@ def _media_manifest(root, names, issues, *, allowed_paths, manifest_name, limits
 def _visual_manifest(root, names, issues):
     return _media_manifest(root, names, issues, allowed_paths=VISUAL_PATHS,
         manifest_name=VISUAL_MANIFEST, limits=VISUAL_LIMITS, kind='visual',
-        dimension_check=lambda suffix, width, height: (width, height) == VISUAL_DIMENSIONS[suffix])
+        dimension_check=lambda name, width, height: (width, height) == VISUAL_DIMENSIONS[name])
 
 
-def _screenshot_dimensions_ok(_suffix, width, height):
+def _screenshot_dimensions_ok(_name, width, height):
     return 640 <= width <= 2560 and 360 <= height <= 4096 and width * height <= 8 * 1024 * 1024
 
 

@@ -112,6 +112,146 @@
       "bytes": 1152805,
       "width": 1280,
       "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/street.webp",
+      "sha256": "0f0fdcc7e29eecbe58255509db3110d59daa47f6c3aacc72397341398775296a",
+      "bytes": 156600,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/street.mp4",
+      "sha256": "4abe863cd7472ca5be6b0d7df5caa3f94bf3ebdc16f3a8e1a92ef4b8434e7b6e",
+      "bytes": 1592619,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/village.webp",
+      "sha256": "57be24cccb910e5cf986428128629fa526e97a511d8c94853122a5655a3aac97",
+      "bytes": 199984,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/village.mp4",
+      "sha256": "6dcb95309383481b99c86482900932ae144819ae184d3aee3b227a0b9855acd3",
+      "bytes": 1781777,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/forest.webp",
+      "sha256": "1685ad3cccd361e4a8d0e09a4fe57a2e1c319140bdd49cda8f70cb0464c786fb",
+      "bytes": 253158,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/forest.mp4",
+      "sha256": "e15a02949133d9441d9fec6d4f606e17474572498b328e565b566446253d7ca4",
+      "bytes": 2590815,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/lake.webp",
+      "sha256": "062d706385c4b6a4b026f6f49824a3712935278f31d32e09ae3b42f25b58e544",
+      "bytes": 108492,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/lake.mp4",
+      "sha256": "92d5d3a1f579ce9bfd94ef15630b987559863bface2625b38b4cfd4dcd48049b",
+      "bytes": 2087172,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/desert.webp",
+      "sha256": "3e9cc4586733f0280a4d45bc83ecb814c150d2e565b722b15f3bdaaec1713e9b",
+      "bytes": 94030,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/desert.mp4",
+      "sha256": "c14a61c4eddfae17127716c3ffd52155a6c55a65328549473955f556a331d3a1",
+      "bytes": 868033,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/rice.webp",
+      "sha256": "c8dbbe59cd8c4d910d5768f7f0c339e1fed895706b0adc8b8b1e620a4655eefa",
+      "bytes": 179932,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/rice.mp4",
+      "sha256": "813414591646bac904bf780ca82813bb72266f71fa8ec1a801e247f0ffab7ac7",
+      "bytes": 3262233,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/milkyway.webp",
+      "sha256": "b26b60b75e861a07e724552ec3146d9314fda394855fb8d259c7cd6e6b2883ea",
+      "bytes": 92916,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/milkyway.mp4",
+      "sha256": "336f9007398279b1ea5b52dbf3600dbe11a6d7adf46ec336cd1ec7f6f9fe6e78",
+      "bytes": 2057690,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/cells.webp",
+      "sha256": "b43e9c3710796679c6a3a671cd0a9f0d9cb394dcc3367278eb609ea6b65053c3",
+      "bytes": 82870,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/cells.mp4",
+      "sha256": "0761ff511d961e8c209d8b34d1237906b33916ec64dc7f2953a7a136a127530d",
+      "bytes": 1146495,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/molecules.webp",
+      "sha256": "464f909d08dccc18ebfe0e524063fc6fe7da486be19c61b6b3ee36e85fec94e9",
+      "bytes": 27666,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/molecules.mp4",
+      "sha256": "d26e5b7c3da65216bb34f183ef706b8a13ed4240e351f69ecf4af301fddb1fd2",
+      "bytes": 635602,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/garden.webp",
+      "sha256": "8d247b2373b1fd917395a393b1f9f9593d9575e52d03cf067753ce9e90ba32d0",
+      "bytes": 168402,
+      "width": 1012,
+      "height": 720
+    },
+    {
+      "path": "frontend/public/visuals/garden.mp4",
+      "sha256": "4dfd72a70e9b6331c5ede65b69ac98ca87eb6f28c70d4dffd7c863567e44809e",
+      "bytes": 1957067,
+      "width": 1012,
+      "height": 720
     }
   ]
 }

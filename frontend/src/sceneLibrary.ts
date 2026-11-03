@@ -1,5 +1,5 @@
 /** UI-only visit backgrounds. No article data, provider state or model calls. */
-export type Scene = Readonly<{ id: string; name: string; url: string; videoUrl?: string }>
+export type Scene = Readonly<{ id: string; name: string; url: string; videoUrl?: string; fadeLoop?: boolean }>
 
 export const scenes: readonly Scene[] = Object.freeze([
   { id: 'blackhole', name: '黑洞', url: '/visuals/blackhole.webp', videoUrl: '/visuals/blackhole.mp4' },
@@ -10,15 +10,26 @@ export const scenes: readonly Scene[] = Object.freeze([
   { id: 'mountain', name: '高山', url: '/visuals/mountain.webp', videoUrl: '/visuals/mountain.mp4' },
   { id: 'ocean', name: '大海', url: '/visuals/ocean.webp', videoUrl: '/visuals/ocean.mp4' },
   { id: 'dna', name: 'DNA', url: '/visuals/dna.webp', videoUrl: '/visuals/dna.mp4' },
+  { id: 'street', name: '市井', url: '/visuals/street.webp', videoUrl: '/visuals/street.mp4', fadeLoop: true },
+  { id: 'village', name: '村庄', url: '/visuals/village.webp', videoUrl: '/visuals/village.mp4', fadeLoop: true },
+  { id: 'forest', name: '森林', url: '/visuals/forest.webp', videoUrl: '/visuals/forest.mp4', fadeLoop: true },
+  { id: 'lake', name: '湖泊', url: '/visuals/lake.webp', videoUrl: '/visuals/lake.mp4', fadeLoop: true },
+  { id: 'desert', name: '沙漠', url: '/visuals/desert.webp', videoUrl: '/visuals/desert.mp4', fadeLoop: true },
+  { id: 'rice', name: '金秋稻田', url: '/visuals/rice.webp', videoUrl: '/visuals/rice.mp4', fadeLoop: true },
+  { id: 'milkyway', name: '银河星野', url: '/visuals/milkyway.webp', videoUrl: '/visuals/milkyway.mp4', fadeLoop: true },
+  { id: 'cells', name: '生物细胞', url: '/visuals/cells.webp', videoUrl: '/visuals/cells.mp4', fadeLoop: true },
+  { id: 'molecules', name: '微观分子', url: '/visuals/molecules.webp', videoUrl: '/visuals/molecules.mp4', fadeLoop: true },
+  { id: 'garden', name: '晨光花园', url: '/visuals/garden.webp', videoUrl: '/visuals/garden.mp4', fadeLoop: true },
 ].map(scene => Object.freeze(scene)))
 
 type SceneStorage = Pick<Storage, 'getItem' | 'setItem'>
-type VisitState = { v: 1; last: string | null; remaining: string[] }
+const deckVersion = 2
+type VisitState = { v: typeof deckVersion; last: string | null; remaining: string[] }
 const storageKey = 'tuxu.ui.scene-visits.v1'
 const sceneById = new Map(scenes.map(scene => [scene.id, scene]))
 
 function readVisitState(storage?: SceneStorage): VisitState {
-  const empty: VisitState = { v: 1, last: null, remaining: [] }
+  const empty: VisitState = { v: deckVersion, last: null, remaining: [] }
   try {
     const raw = storage?.getItem(storageKey)
     if (!raw || raw.length > 2048) return empty
@@ -26,12 +37,12 @@ function readVisitState(storage?: SceneStorage): VisitState {
     if (!state || typeof state !== 'object' || Array.isArray(state)) return empty
     const saved = state as Record<string, unknown>
     const last = typeof saved.last === 'string' && sceneById.has(saved.last) ? saved.last : null
-    // A readable last ID still prevents a boundary repeat if the rest is damaged.
-    const reset: VisitState = { v: 1, last, remaining: [] }
-    if (saved.v !== 1 || !last || !Array.isArray(saved.remaining) || saved.remaining.length >= scenes.length) return reset
+    // Upgrades and damaged decks start a new shuffle while retaining a valid last scene.
+    const reset: VisitState = { v: deckVersion, last, remaining: [] }
+    if (saved.v !== deckVersion || !last || !Array.isArray(saved.remaining) || saved.remaining.length >= scenes.length) return reset
     const remaining = saved.remaining
     if (remaining.some(id => typeof id !== 'string' || !sceneById.has(id) || id === last) || new Set(remaining).size !== remaining.length) return reset
-    return { v: 1, last, remaining: remaining as string[] }
+    return { v: deckVersion, last, remaining: remaining as string[] }
   } catch {
     return empty
   }
@@ -66,7 +77,7 @@ export function chooseSceneForVisit(storage?: SceneStorage, random: () => number
   const deck = state.remaining.length ? state.remaining : shuffledDeck(state.last, random)
   const scene = sceneById.get(deck[0])!
   try {
-    storage?.setItem(storageKey, JSON.stringify({ v: 1, last: scene.id, remaining: deck.slice(1) }))
+    storage?.setItem(storageKey, JSON.stringify({ v: deckVersion, last: scene.id, remaining: deck.slice(1) }))
   } catch { /* Private mode/quota failure cannot block entry to the page. */ }
   return scene
 }

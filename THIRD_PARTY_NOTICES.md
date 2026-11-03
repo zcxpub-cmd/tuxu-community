@@ -30,6 +30,8 @@ of rights to every optional component a user may install.
   obtain them from the model publisher and check those terms before use.
 - Cloud API access, generated media rights, pricing and model availability follow
   the selected supplier's terms. No API key or free generation entitlement is included.
+- The homepage videos are AI-generated scene assets made with Seedance 2.0.
+  The bundled video and still files are served locally for homepage playback.
 - Codex host collaboration requires a supported host and its image tool; this
   repository does not include or redistribute that service.
 - Users must have permission for articles, fonts, reference images and other assets

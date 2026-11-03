@@ -90,6 +90,7 @@ body { margin: 0; background: var(--cinema-bg); }
   background-position: center;
   transform-origin: 65% 50%;
 }
+.entry-video-fade { opacity: 0; }
 .entry-shade {
   position: absolute;
   z-index: -2;

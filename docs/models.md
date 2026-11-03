@@ -1,6 +1,6 @@
 # 模型配置
 
-源码与 Release 不附带权重或密钥；v0.5.0 提供 Hugging Face 官方上游与 Ollama 量化版的[下载和安装说明](model-download.md)。文章分析与图片生成是两条不同的路线。
+源码与 Release 不附带权重或密钥；v0.6.0 提供 Hugging Face 官方上游与 Ollama 量化版的[下载和安装说明](model-download.md)。文章分析与图片生成是两条不同的路线。
 
 ## 文章理解
 

@@ -2,11 +2,15 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import { chooseSceneForVisit, getInitialScene, pickVisitScene, scenes } from '../src/sceneLibrary.ts'
 
-const ids = ['blackhole', 'fold', 'stellar', 'city', 'field', 'mountain', 'ocean', 'dna']
+const legacyIds = ['blackhole', 'fold', 'stellar', 'city', 'field', 'mountain', 'ocean', 'dna']
+const newIds = ['street', 'village', 'forest', 'lake', 'desert', 'rice', 'milkyway', 'cells', 'molecules', 'garden']
+const ids = [...legacyIds, ...newIds]
 const sceneCount = scenes.length
 assert.deepEqual(scenes.map(scene => scene.id), ids)
 assert.equal(new Set(scenes.map(scene => scene.url)).size, sceneCount)
 assert.ok(scenes.every(scene => scene.url === `/visuals/${scene.id}.webp` && (scene.id === 'dna' ? scene.name === 'DNA' : /[\u4e00-\u9fff]/u.test(scene.name))))
+assert.ok(scenes.every(scene => scene.videoUrl === `/visuals/${scene.id}.mp4`))
+assert.deepEqual(scenes.filter(scene => scene.fadeLoop).map(scene => scene.id), newIds)
 assert.ok(Object.isFrozen(scenes) && scenes.every(Object.isFrozen), 'The shared catalog cannot be mutated by consumers')
 
 function memoryStorage(initial = null) {
@@ -37,6 +41,7 @@ for (const random of randoms) {
     const saved = JSON.parse(write.value)
     assert.equal(write.key, 'tuxu.ui.scene-visits.v1')
     assert.deepEqual(Object.keys(saved).sort(), ['last', 'remaining', 'v'])
+    assert.equal(saved.v, 2)
     assert.ok(ids.includes(saved.last) && saved.remaining.every(id => ids.includes(id)), 'Storage contains UI scene IDs only')
     assert.equal(new Set(saved.remaining).size, saved.remaining.length)
     assert.ok(!saved.remaining.includes(saved.last))
@@ -52,17 +57,23 @@ const nextPart = Array.from({ length: sceneCount - firstPart.length }, () => cho
 assert.equal(new Set([...firstPart, ...nextPart]).size, sceneCount)
 assert.notEqual(firstPart.at(-1), nextPart[0])
 
+// Upgrading a partially used eight-scene deck reshuffles all scenes without repeating the last one.
+const legacyStorage = memoryStorage(JSON.stringify({ v: 1, last: 'blackhole', remaining: ['city', 'dna'] }))
+const upgradedVisits = Array.from({ length: sceneCount }, () => chooseSceneForVisit(legacyStorage, () => 0.99999).id)
+assert.notEqual(upgradedVisits[0], 'blackhole')
+assert.deepEqual(upgradedVisits.slice().sort(), ids.slice().sort())
+
 // Corrupt or obsolete local state must fail safely, never leak arbitrary IDs.
 const badStates = [
   'not JSON', 'null', '[]', '123', 'x'.repeat(2049),
-  JSON.stringify({ v: 1, last: 'missing', remaining: ['unknown'] }),
-  JSON.stringify({ v: 0, last: 'blackhole', remaining: ['city'] }),
-  JSON.stringify({ v: 1, last: 'blackhole', remaining: ['city', 'city'] }),
-  JSON.stringify({ v: 1, last: 'blackhole', remaining: ['blackhole'] }),
-  JSON.stringify({ v: 1, last: 'blackhole', remaining: ['unknown'] }),
-  JSON.stringify({ v: 1, last: 'blackhole', remaining: [false] }),
-  JSON.stringify({ v: 1, last: 'blackhole', remaining: ids }),
-  JSON.stringify({ v: 1, last: 'blackhole', remaining: null }),
+  JSON.stringify({ v: 2, last: 'missing', remaining: ['unknown'] }),
+  JSON.stringify({ v: 1, last: 'blackhole', remaining: ['city'] }),
+  JSON.stringify({ v: 2, last: 'blackhole', remaining: ['city', 'city'] }),
+  JSON.stringify({ v: 2, last: 'blackhole', remaining: ['blackhole'] }),
+  JSON.stringify({ v: 2, last: 'blackhole', remaining: ['unknown'] }),
+  JSON.stringify({ v: 2, last: 'blackhole', remaining: [false] }),
+  JSON.stringify({ v: 2, last: 'blackhole', remaining: ids }),
+  JSON.stringify({ v: 2, last: 'blackhole', remaining: null }),
 ]
 for (const raw of badStates) {
   const storage = memoryStorage(raw)
@@ -70,7 +81,7 @@ for (const raw of badStates) {
   assert.ok(ids.includes(scene.id))
   if (raw.includes('"last":"blackhole"')) assert.notEqual(scene.id, 'blackhole', 'A recoverable last ID survives damaged-deck recovery')
   const clean = JSON.parse(storage.value)
-  assert.equal(clean.v, 1)
+  assert.equal(clean.v, 2)
   assert.equal(new Set(clean.remaining).size, sceneCount - 1)
 }
 for (const random of [() => -10, () => 1, () => Infinity, () => NaN, () => { throw Error('rng unavailable') }]) {
@@ -121,7 +132,7 @@ try {
   for (const localStorage of [
     { getItem() { throw Error('blocked') }, setItem() { throw Error('blocked') } },
     { getItem() { return null }, setItem() { throw Error('quota') } },
-    { getItem() { return JSON.stringify({ v: 1, last: 'blackhole', remaining: [] }) }, setItem() { throw Error('quota with stale state') } },
+    { getItem() { return JSON.stringify({ v: 2, last: 'blackhole', remaining: [] }) }, setItem() { throw Error('quota with stale state') } },
   ]) {
     setWindow({ document: {}, localStorage })
     const visits = [getInitialScene().id, ...Array.from({ length: sceneCount * 3 - 1 }, () => pickVisitScene().id)]

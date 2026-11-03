@@ -3,17 +3,17 @@
   "assets": [
     {
       "path": "docs/screenshots/article.jpg",
-      "sha256": "d76931978f52e92ac4633c0c98f3c28c2e49961490a4b6e0c1aa0e54d0d35da5",
-      "bytes": 103741,
-      "width": 1425,
-      "height": 1209
+      "sha256": "10bdb1bcccfbf8094beeb4afeddc8830dc07d12280904faaefbbc3dd80c76e83",
+      "bytes": 56433,
+      "width": 1265,
+      "height": 712
     },
     {
       "path": "docs/screenshots/authorization.jpg",
-      "sha256": "d5b7dd30660c3fddb304c2118949f26d40f3b4a8701dafdd5e6bb0f2b476d1a9",
-      "bytes": 113112,
-      "width": 1425,
-      "height": 1413
+      "sha256": "395e3652e741373a9a1985866d432d045fd6f6c9a427a587f18da5732c85f480",
+      "bytes": 55102,
+      "width": 1265,
+      "height": 712
     },
     {
       "path": "docs/screenshots/director.jpg",

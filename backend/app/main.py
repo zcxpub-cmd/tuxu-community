@@ -31,6 +31,7 @@ from .style_recommendations import apply_recommendation, validate_recommendation
 from .paths import default_data_directory
 from .local_agent import LocalAgentBridge, REJECTED as AGENT_REJECTED, RUNNING as AGENT_RUNNING
 from .image_geometry import fits_requested_canvas, native_canvas_notice
+from .one_click import OneClick
 
 ROOT = Path(__file__).resolve().parents[2]
 GENRES = ['academic', 'news', 'novel', 'report']
@@ -229,6 +230,7 @@ class Service:
         self.asset_locks = {}
         self.asset_locks_guard = threading.Lock()
         self.local_agent = LocalAgentBridge(self)
+        self.one_click = OneClick(self)
 
     def asset_lock(self, task_id, asset_id):
         with self.asset_locks_guard:
@@ -290,6 +292,7 @@ class Service:
         self.executor.submit(self.run_job, task_id, job_id)
 
     def recover(self):
+        self.one_click.recover()
         for task in self.store.list():
             if task.get('_prompting'):
                 def reset(t):
@@ -314,9 +317,17 @@ class Service:
                     return
                 def running(t):
                     j = next(j for j in t['jobs'] if j['id'] == job_id)
+                    if j['status'] not in ('queued', 'running'):
+                        return False
+                    if t.get('cancel_requested') and not j.get('submissions'):
+                        j.update(status='cancelled', message='已取消未提交的任务。')
+                        return False
                     j['status'] = 'running'
                     j['message'] = '本地模型执行中。'
-                self.update(task_id, running)
+                    return True
+                _, started = self.update(task_id, running)
+                if not started:
+                    return
                 if job['kind'] == 'analysis':
                     self.analyze(task_id, job_id)
                 else:
@@ -342,12 +353,22 @@ class Service:
     def analyze(self, task_id, job_id):
         task = self.require(task_id)
         job = next(j for j in task['jobs'] if j['id'] == job_id)
+        if task.get('cancel_requested'):
+            self.finish(task_id, job_id, 'cancelled', '分析已取消，未开始模型请求。')
+            return
         result = self.ollama.analyze(task['document'], task['genre'], task['style'], job['model'])
         coverage = result.get('coverage')
         expected = [p['id'] for p in task['document']['paragraphs']]
         if not isinstance(coverage, list) or len(coverage) != len(expected) or set(coverage) != set(expected):
             raise ModelError('全文覆盖校验失败：模型遗漏、重复或创造了段落 ID。未保存不完整方案。')
         slots = validate_slots(result.get('slots'), task['document'])
+        if job.get('automation_id'):
+            run = task.get('automation') or {}
+            if run.get('id') != job['automation_id'] or run.get('status') not in ('running', 'waiting'):
+                self.finish(task_id, job_id, 'cancelled', '一键流程已停止，未保存旧分析。')
+                return
+            if len(slots) > run['max_images']:
+                raise ModelError('一键配图建议超过授权数量，未建立生图授权。')
         paragraphs = {p['id']: p['text'] for p in task['document']['paragraphs']}
         slots = [slot if slot.get('style_recommendation') else
                  apply_recommendation(slot, task['genre'], paragraphs[slot['paragraph_id']]) for slot in slots]
@@ -725,11 +746,13 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         if recover:
             service.recover()
         service.local_agent.start()
+        service.one_click.start()
         yield
+        service.one_click.stop()
         service.local_agent.stop()
         service.executor.shutdown(wait=False, cancel_futures=True)
 
-    app = FastAPI(title='图序社区版 · Tuxu Community', version='0.4.0', lifespan=lifespan)
+    app = FastAPI(title='图序社区版 · Tuxu Community', version='0.5.0', lifespan=lifespan)
     app.state.service = service
 
     @app.exception_handler(RequestValidationError)
@@ -773,7 +796,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         preferred = next((p['id'] for p in cloud['profiles'] if p.get('ready') and
                           p.get('verification', {}).get('generation') == 'succeeded' and
                           p.get('verification', {}).get('connection') != 'failed'), 'local')
-        return {'application': {'id': 'tuxu-community', 'version': '0.4.0'},
+        return {'application': {'id': 'tuxu-community', 'version': '0.5.0'},
                 'token': service.store.token, 'genres': GENRES, 'tasks': [public(t) for t in service.store.list()],
                 'models': {'ollama': text, 'comfy': image, 'cloud': cloud, 'local_agent': service.local_agent.status()}, 'defaults': {'text_model': text.get('model', TEXT_MODEL),
                 'image_provider': preferred,
@@ -861,7 +884,11 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         return {'id': str(uuid.uuid4()), 'kind': kind, 'status': 'queued', 'progress': 0,
                 'message': '等待本地串行模型队列。', 'error': None, 'request_ids': [], 'attempts': 0,
                 'fingerprint': None, 'plan_version': task['plan']['version'] if task.get('plan') else None,
-                'approval_id': None, 'created_at': now(), **extra}
+                'approval_id': None, 'created_at': now(), **service.one_click.job_metadata(), **extra}
+
+    @app.post('/api/tasks/{task_id}/one-click')
+    def one_click(task_id: str, body: dict):
+        return public(service.one_click.start_run(task_id, body))
 
     @app.post('/api/tasks/{task_id}/analyze')
     def analyze(task_id: str, body: dict):
@@ -869,6 +896,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         if len(model) > 150:
             bad('模型名称无效。')
         def change(t):
+            service.one_click.guard(t)
             if busy(t) or unresolved(t):
                 bad('当前任务正在执行，请等待或取消完成后再分析。', 409)
             invalidate(t, True)
@@ -877,6 +905,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
             t['status'] = 'analyzing'
             job = new_job(t, 'analysis', model=model, document_hash=t['document']['source_hash'])
             t['jobs'].append(job)
+            service.one_click.effect(t, 'analysis', job_id=job['id'])
             return job['id']
         task, job_id = service.update(task_id, change)
         service.schedule(task_id, job_id)
@@ -885,6 +914,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
     @app.put('/api/tasks/{task_id}/plan')
     def plan(task_id: str, body: dict):
         def change(t):
+            service.one_click.guard(t)
             if busy(t) or unresolved(t):
                 bad('执行中的任务不能修改方案，请等待或取消完成。', 409)
             if not t.get('plan') or body.get('version') != t['plan']['version']:
@@ -903,6 +933,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
 
     @app.post('/api/tasks/{task_id}/approve')
     def approve(task_id: str, body: dict):
+        service.one_click.guard(service.require(task_id))
         provider = body.get('image_provider', 'local')
         if provider not in ('local', 'ark', 'openai', 'codex'):
             bad('生图服务选项无效。')
@@ -921,6 +952,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
             if not health.get('available') or checkpoint not in health.get('checkpoints', []):
                 bad('所选 checkpoint 当前不可用，请检查本地 ComfyUI。', 409)
         def reserve(t):
+            service.one_click.guard(t)
             if busy(t) or unresolved(t):
                 bad('任务正在执行，请稍后确认。', 409)
             if not t.get('plan') or body.get('version') != t['plan']['version']:
@@ -937,6 +969,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         _, approved = service.update(task_id, reserve)
         try:
             image_targets = {}
+            agent_revision = None
             with service.model_lock:
                 if provider != 'local':
                     if not approved['plan']['slots']:
@@ -944,6 +977,9 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
                     image_targets = {s['id']: service.cloud_config.target(provider, s['aspect_ratio'], quality)
                                      for s in approved['plan']['slots']}
                     checkpoint = next(iter(image_targets.values()))['model']
+                    if provider == 'codex':
+                        agent_revision = service.local_agent.revision()
+                service.one_click.check_approved_target(approved, image_targets, agent_revision)
                 # All new approvals, including external image engines and the
                 # local-agent bridge, use the same local text model. No cloud
                 # text-model or rule-based prompt fallback is permitted.
@@ -953,6 +989,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
                     prompts = validate_prompts(compile_controls(prompts, approved['plan']['slots'], conditioning_mode=MASKED_REGIONS_MODE),
                                                approved['plan']['slots'], english=True, require_background=True)
             def save(t):
+                service.one_click.guard(t)
                 if t['plan'] != approved['plan'] or t.get('cancel_requested'):
                     bad('批准流程被取消或版本改变，未保存授权。', 409)
                 t['prompts'] = prompts
@@ -966,10 +1003,11 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
                     t['approval']['image_target'] = copy.deepcopy(next(iter(image_targets.values())))
                     t['approval']['image_targets'] = copy.deepcopy(image_targets)
                     if provider == 'codex':
-                        t['approval']['local_agent_revision'] = service.local_agent.revision()
+                        t['approval']['local_agent_revision'] = agent_revision
                 t['_prompting'] = False
                 t['status'] = 'approved'
                 t['error'] = None
+                service.one_click.effect(t, 'approval', approval_id=t['approval']['id'])
             task, _ = service.update(task_id, save)
             return public(task)
         except Exception as exc:
@@ -981,6 +1019,13 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
                 failure_evidence = [{key: value for key, value in item.items() if key in fields}
                                     for item in getattr(service.ollama, 'last_prompt_evidence', [])]
             def failed(t):
+                if service.one_click.current():
+                    try:
+                        service.one_click.guard(t)
+                    except HTTPException:
+                        if (t.get('automation') or {}).get('id') == service.one_click.current()[1] and t.get('plan') == approved['plan']:
+                            t['_prompting'] = False
+                        return
                 t['_prompting'] = False
                 t['approval'] = None
                 t['status'] = 'plan_ready'
@@ -998,10 +1043,12 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
 
     @app.post('/api/tasks/{task_id}/generate')
     def generate(task_id: str, body: dict):
+        service.one_click.guard(service.require(task_id))
         key = str(body.get('idempotency_key', '')).strip()
         if not key or len(key) > 200:
             bad('请提供有效幂等键。')
         def change(t):
+            service.one_click.guard(t)
             snap = snapshot(t)
             if body.get('version') != snap['plan_version'] or body.get('approval_id') != snap['approval_id']:
                 bad('生成授权版本不匹配。', 409)
@@ -1017,6 +1064,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
                     existing.update(status='queued', error=None, message='恢复原作业，只检查已记录请求，不重复提交。')
                     t['cancel_requested'] = False
                     t['status'], t['error'] = 'generating', None
+                service.one_click.effect(t, 'generation', job_id=existing['id'])
                 return existing['id']
             if busy(t):
                 bad('任务正在执行，请等待当前任务。', 409)
@@ -1034,6 +1082,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
                           approval_id=snap['approval_id'], idempotency_key=key, slots=copy.deepcopy(missing),
                           prompts=copy.deepcopy(t['prompts']), submissions=[])
             t['jobs'].append(job)
+            service.one_click.effect(t, 'generation', job_id=job['id'])
             return job['id']
         task, job_id = service.update(task_id, change)
         if next(j for j in task['jobs'] if j['id'] == job_id)['status'] == 'queued':
@@ -1068,7 +1117,9 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
 
     @app.post('/api/tasks/{task_id}/cancel')
     def cancel(task_id: str, body: dict):
+        service.one_click.signal_cancel(task_id)
         def change(t):
+            service.one_click.cancel_marker(t)
             t['cancel_requested'] = True
             for job in t['jobs']:
                 if job['kind'] == 'generation':
@@ -1095,6 +1146,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
 
     @app.post('/api/tasks/{task_id}/process')
     def process(task_id: str, body: dict):
+        service.one_click.guard(service.require(task_id))
         from .postprocess import process_image
         asset_id = body.get('asset_id')
         if not isinstance(asset_id, str) or len(asset_id) > 100:
@@ -1107,6 +1159,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
             bad('denoise 必须是布尔值。')
         with service.asset_lock(task_id, asset_id):
             task = service.require(task_id)
+            service.one_click.guard(task)
             if busy(task):
                 bad('请等待模型任务结束后处理图片。', 409)
             asset = next((a for a in task['assets'] if a['id'] == asset_id), None)
@@ -1130,6 +1183,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
                     bad(str(exc))
                 result['version'] = version
             def change(t):
+                service.one_click.guard(t)
                 if not matches(t, snap):
                     bad('图片处理期间授权发生变化，请重新处理。', 409)
                 a = next(a for a in t['assets'] if a['id'] == asset_id)
@@ -1159,16 +1213,19 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
     @app.post('/api/tasks/{task_id}/select')
     def select(task_id: str, body: dict):
         def change(t):
+            service.one_click.guard(t)
             if busy(t):
                 bad('请等待当前任务结束再选图。', 409)
             snapshot(t)
             t['selections'] = validated_selections(t, body.get('selections'))
             t['status'] = 'review'
+            service.one_click.effect(t, 'selection', selections_hash=digest(t['selections']))
         task, _ = service.update(task_id, change)
         return public(task)
 
     @app.post('/api/tasks/{task_id}/export')
     def export(task_id: str, body: dict):
+        service.one_click.guard(service.require(task_id))
         from .documents import export_document
         format = body.get('format')
         key = str(body.get('idempotency_key', '')).strip()
@@ -1176,6 +1233,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
             bad('请确认插图位置并提供有效导出格式与幂等键。')
         with service.store.lock:
             task = service.require(task_id)
+            service.one_click.guard(task)
             if busy(task):
                 bad('任务执行中不能导出。', 409)
             if task.get('plan') and task['plan']['slots'] == [] and task['selections'] == {}:
@@ -1194,6 +1252,8 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
             if previous:
                 if previous['fingerprint'] != fingerprint:
                     bad('此导出幂等键已用于其他选图或版本。', 409)
+                if service.one_click.current():
+                    task, _ = service.update(task_id, lambda current: service.one_click.effect(current, 'export', url=previous['url']))
                 return {**previous, 'task': public(task)}
             items = []
             for slot in task['plan']['slots']:
@@ -1204,7 +1264,14 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
                 path = service.processed_path(task_id, asset) if selection['use_processed'] else service.directory(task_id) / 'assets' / (asset['id'] + '.png')
                 if not path.is_file():
                     bad('选中图片文件不存在，请重新生成或处理。', 409)
-                path = private_image_copy(path, service.directory(task_id) / 'public-cache')
+                automated = service.one_click.current() is not None
+                if automated and selection['use_processed']:
+                    bad('一键选用原图已改变，已停止自动导出。', 409)
+                try:
+                    path = private_image_copy(path, service.directory(task_id) / 'public-cache',
+                                              expected_sha256=asset['sha256'] if automated else None)
+                except ValueError:
+                    bad('选中原图已改变或无法读取，请检查图片后重新导出。', 409)
                 items.append({'slot_id': slot['id'], 'paragraph_id': slot['paragraph_id'], 'image_path': path,
                               'caption': slot['caption'], 'alt_text': slot['description'], 'asset_id': asset['id']})
             export_id = str(uuid.uuid4())
@@ -1219,6 +1286,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
                 bad(str(exc))
             if not output.is_file() or output.resolve().parent != output_dir.resolve():
                 bad('文档模块没有返回可下载的新文件。', 500)
+            service.one_click.guard(service.require(task_id))
             if source_path and hashlib.sha256(source_path.read_bytes()).hexdigest() != task['document']['source_hash']:
                 bad('文档模块修改了原稿，导出未被发布。', 500)
             # Flatten a uniquely named immutable output; repeated exports cannot overwrite prior download URLs.
@@ -1229,8 +1297,10 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
             entry = {'url': f'/api/exports/{task_id}/{filename}', 'filename': filename, 'format': format,
                      'idempotency_key': key, 'fingerprint': fingerprint, 'created_at': now(), **snap}
             def saved(t):
+                service.one_click.guard(t)
                 t['exports'].append(entry)
                 t['status'] = 'exported'
+                service.one_click.effect(t, 'export', url=entry['url'])
             task, _ = service.update(task_id, saved)
             return {**entry, 'task': public(task)}
 
@@ -1269,6 +1339,8 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         return FileResponse(path, filename=filename, headers={'X-Content-SHA256': hashlib.sha256(path.read_bytes()).hexdigest()})
 
     frontend = ROOT / 'frontend' / 'dist'
+    service.one_click.bind(analysis=analyze, approval=approve, generation=generate,
+                           selection=select, export=export, cancel=cancel)
     if frontend.is_dir():
         app.mount('/', StaticFiles(directory=frontend, html=True), name='frontend')
     return app

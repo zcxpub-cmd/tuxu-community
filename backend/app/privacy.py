@@ -20,8 +20,9 @@ from pathlib import Path
 
 from PIL import Image
 from .cloud import PUBLIC_CLOUD_MESSAGES
+from .one_click import MESSAGES as AUTOMATION_MESSAGES, STAGES as AUTOMATION_STAGES, STATUSES as AUTOMATION_STATUSES
 
-_PUBLIC_ERROR_MESSAGES = PUBLIC_CLOUD_MESSAGES | frozenset({
+_PUBLIC_ERROR_MESSAGES = PUBLIC_CLOUD_MESSAGES | frozenset(AUTOMATION_MESSAGES.values()) | frozenset({
     '本机智能体配置已改变，请重新确认当前方案。',
     '本机智能体未能启动图片工具，未生成图片，请检查配置后重新确认。',
     '本机智能体已返回图片，但图片校验未通过。请检查画幅或改用其他生图服务；已生成请求不会自动重发。',
@@ -76,6 +77,21 @@ def _drop_global_text(value):
 def public_task(task):
     result = copy.deepcopy(task)
     result = _drop_global_text(result)
+    automation = result.pop('automation', None)
+    if isinstance(automation, dict):
+        identifier = automation.get('id')
+        safe = {'id': identifier if isinstance(identifier, str) and re.fullmatch(r'[a-f0-9-]{36}', identifier) else '',
+                'status': automation.get('status') if automation.get('status') in AUTOMATION_STATUSES else 'paused',
+                'stage': automation.get('stage') if automation.get('stage') in AUTOMATION_STAGES else 'analysis',
+                'message': automation.get('message') if automation.get('message') in AUTOMATION_MESSAGES.values() else AUTOMATION_MESSAGES['unknown'],
+                'format': automation.get('format') if automation.get('format') in ('docx', 'markdown', 'html') else 'docx'}
+        for key in ('max_images', 'completed_images', 'total_images'):
+            value = automation.get(key)
+            safe[key] = min(5, max(0, value)) if type(value) is int else 0
+        url = automation.get('export_url')
+        if isinstance(url, str) and re.fullmatch(r'/api/exports/[a-f0-9-]{36}/[a-f0-9-]{36}\.(?:docx|zip|html)', url):
+            safe['export_url'] = url
+        result['automation'] = safe
     for key in ('source_path', 'edited_prompt_ids', 'cancel_requested', '_prompting', 'prompts'):
         result.pop(key, None)
     result['prompt_summaries'] = {
@@ -87,6 +103,7 @@ def public_task(task):
     if result.get('approval'):
         result['approval'].pop('prompt_evidence', None)
     for job in result.get('jobs', []):
+        job.pop('automation_id', None)
         job.pop('prompts', None)
         if job.get('error') or job.get('status') == 'failed':
             job['error'] = public_error(job.get('error') or job.get('message'))
@@ -137,12 +154,14 @@ def sanitize_new_image(path):
     _atomic_write(path, clean_png(path.read_bytes()))
 
 
-def private_image_copy(path, cache_dir):
+def private_image_copy(path, cache_dir, expected_sha256=None):
     path, cache_dir = Path(path), Path(cache_dir)
     source = path.read_bytes()
     identity = hashlib.sha256(source).hexdigest()
+    if expected_sha256 is not None and identity != expected_sha256:
+        raise ValueError('原图哈希已改变。')
     target = cache_dir / ('image-v2-' + identity + '.png')
-    if not target.is_file():
+    if expected_sha256 is not None or not target.is_file():
         _atomic_write(target, clean_png(source))
     return target
 

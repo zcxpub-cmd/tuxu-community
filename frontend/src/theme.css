@@ -1,0 +1,203 @@
+/* Load after cinema.css. All appearance colors belong to workspace/dialog
+   scopes; the cinematic home image, headline and navigation remain unchanged. */
+:is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) {
+  --cinema-panel: var(--cinema-surface);
+  --cinema-green: var(--cinema-good);
+  --workspace-color-scheme: dark;
+  color-scheme: var(--workspace-color-scheme);
+}
+
+:root[data-workspace-theme="light"] :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) {
+  --cinema-bg: #f5f2eb;
+  --cinema-side: #eeebe4;
+  --cinema-surface: #fcfaf5;
+  --cinema-raised: #e9e5dc;
+  --cinema-field: #fffcf7;
+  --cinema-text: #24282b;
+  --cinema-secondary: #41484d;
+  --cinema-muted: #5e666c;
+  --cinema-line: #cbc6bb;
+  --cinema-control: #8c8b83;
+  --cinema-amber: #80521d;
+  --cinema-danger: #a6322a;
+  --cinema-good: #2e6348;
+  --cinema-focus: #865512;
+  --cinema-paper: #fffcf5;
+  --cinema-ink: #272a2d;
+  --workspace-color-scheme: light;
+  --green: var(--cinema-text);
+  --dark: var(--cinema-secondary);
+  --muted: var(--cinema-muted);
+  --paper: var(--cinema-surface);
+  --line: var(--cinema-line);
+  --orange: var(--cinema-amber);
+  color: var(--cinema-text);
+  background-color: var(--cinema-bg);
+}
+
+/* Native menus, calendars and autofill use the resolved system preference. */
+:root[data-workspace-theme] :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) :is(input, select, textarea) {
+  color-scheme: var(--workspace-color-scheme);
+  accent-color: var(--cinema-focus);
+}
+:root[data-workspace-theme="light"] :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) ::selection { color: #fffaf0; background: #80521d; }
+
+/* A small typographic switch, with native radio keyboard behavior. Each mounted
+   copy has its own radio name; preferences are shared by the theme store. */
+:is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) .theme-switcher {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  width: fit-content;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--cinema-secondary);
+}
+:is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) .theme-switcher legend {
+  float: none;
+  width: auto;
+  margin: 0 0 8px;
+  padding: 0;
+  color: var(--cinema-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+:is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) .theme-options { display: inline-flex; max-width: 100%; padding: 3px; gap: 2px; border: 1px solid var(--cinema-control); border-radius: 3px; background: var(--cinema-field); }
+:is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) .theme-choice { position: relative; display: block; min-width: 0; margin: 0; padding: 0; color: var(--cinema-secondary); cursor: pointer; }
+:is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) .theme-choice input[type="radio"] { position: absolute; width: 1px; height: 1px; min-width: 0; min-height: 0; max-width: 1px; margin: 0; padding: 0; border: 0; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
+:is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) .theme-choice > span { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 7px 10px; border: 1px solid transparent; border-radius: 2px; font-size: 12px; line-height: 1.7; white-space: nowrap; }
+:is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) .theme-choice input:checked + span { color: var(--cinema-text); background: var(--cinema-raised); border-color: var(--cinema-control); font-weight: 600; }
+:is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) .theme-choice:hover input:not(:disabled) + span { color: var(--cinema-text); background: var(--cinema-raised); }
+:is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) .theme-choice input:focus-visible + span { outline: 3px solid var(--cinema-focus); outline-offset: 3px; }
+:is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) .theme-switcher:disabled .theme-choice { cursor: not-allowed; }
+:is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) .theme-choice input:disabled + span { color: var(--cinema-muted); border-color: var(--cinema-line); background: var(--cinema-surface); }
+.cinematic-studio .workspace-tools .theme-switcher legend { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.cinematic-studio .interface-settings > .theme-switcher { margin: 20px 21px; max-width: calc(100% - 42px); }
+
+/* Workspace planes. Solid reading surfaces avoid white-on-white leftovers from
+   the older light sheet and light-on-light leftovers from cinema.css. */
+:root[data-workspace-theme="light"] .cinematic-studio .sidebar { background: var(--cinema-side); border-color: var(--cinema-line); }
+:root[data-workspace-theme="light"] .cinematic-studio .topbar { background: var(--cinema-bg); }
+:root[data-workspace-theme="light"] .cinematic-studio :is(.brand-mark, .slot-card, .add-slot, .cloud-settings, .interface-settings) { border-color: var(--cinema-line); }
+:root[data-workspace-theme="light"] .cinematic-studio .brand.nav-home:hover:not(:disabled) { color: var(--cinema-amber); }
+:root[data-workspace-theme="light"] .cinematic-studio :is(.studio-wordmark-latin, .slash) { color: var(--cinema-muted); }
+:root[data-workspace-theme="light"] .cinematic-studio :is(.card-bar, .card-foot) { background: var(--cinema-side); }
+:root[data-workspace-theme="light"] .cinematic-studio :is(.connection-card, .empty-state, .settings-card, .slot-card, .director-controls, .director-scene, .object-section, .approval-card, .intent-card, .asset-card, .export-card, .cloud-settings, .interface-settings) { background: var(--cinema-surface); }
+:root[data-workspace-theme="light"] .cinematic-studio :is(.plan-summary, .activity, .read-box, .director-inherited, .cloud-model-note, .scope-note) { color: var(--cinema-secondary); background: var(--cinema-side); border-color: var(--cinema-line); }
+:root[data-workspace-theme="light"] .cinematic-studio :is(.scope-note, .asset-method, .director-help, .cloud-settings-note, .local-agent-message, .provider-verification-note) { color: var(--cinema-muted); }
+:root[data-workspace-theme="light"] .cinematic-studio .task-list { scrollbar-color: var(--cinema-control) transparent; }
+:root[data-workspace-theme="light"] :is(.cinematic-studio, .mobile-history-panel) .task-item:hover:not(:disabled) { background: var(--cinema-side); }
+:root[data-workspace-theme="light"] :is(.cinematic-studio, .mobile-history-panel) .task-item.is-active { background: var(--cinema-raised); border-color: var(--cinema-amber); }
+:root[data-workspace-theme="light"] :is(.cinematic-studio, .mobile-history-panel) .task-item :is(strong, svg) { color: var(--cinema-secondary); }
+:root[data-workspace-theme="light"] :is(.cinematic-studio, .mobile-history-panel) :is(.task-item span, .no-history) { color: var(--cinema-muted); }
+:root[data-workspace-theme="light"] .cinematic-studio .stepper button.current { color: var(--cinema-text); background: var(--cinema-raised); }
+:root[data-workspace-theme="light"] .cinematic-studio .stepper button.visited { color: var(--cinema-good); }
+:root[data-workspace-theme="light"] .cinematic-studio .stepper button.complete:not(:disabled):not(.current) { color: var(--cinema-good); border-color: var(--cinema-good); }
+:root[data-workspace-theme="light"] .cinematic-studio .stepper button.complete:not(:disabled) > span { color: var(--cinema-good); }
+:root[data-workspace-theme="light"] .cinematic-studio .stepper button:hover:not(:disabled):not(.current) { color: var(--cinema-text); background: var(--cinema-side); }
+
+/* Buttons, field states and native menus. */
+:root[data-workspace-theme="light"] :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) :is(.primary, .new-task, .mobile-new-task) { color: #fffaf0; background: #292e32; border-color: #292e32; }
+:root[data-workspace-theme="light"] :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) :is(.primary, .new-task, .mobile-new-task):hover:not(:disabled) { color: #fffaf0; background: #454d52; border-color: #454d52; }
+:root[data-workspace-theme="light"] :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) :is(.primary, .new-task, .mobile-new-task):active:not(:disabled) { background: #171c20; border-color: #171c20; }
+:root[data-workspace-theme="light"] :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) :is(.secondary, .settings-button, .mobile-history-button) { color: var(--cinema-secondary); background: var(--cinema-field); border-color: var(--cinema-control); }
+:root[data-workspace-theme="light"] :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) :is(.secondary, .settings-button, .mobile-history-button):hover:not(:disabled) { color: var(--cinema-text); background: var(--cinema-raised); border-color: var(--cinema-control); }
+:root[data-workspace-theme="light"] :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) .secondary:active:not(:disabled) { background: var(--cinema-line); }
+:root[data-workspace-theme="light"] :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) .text-button { color: var(--cinema-amber); background: transparent; }
+:root[data-workspace-theme="light"] :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) :is(.text-button, .icon-button):hover:not(:disabled) { color: var(--cinema-text); background: var(--cinema-raised); }
+:root[data-workspace-theme="light"] :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) :is(.object-remove, .danger, .danger-button) { color: var(--cinema-danger); }
+:root[data-workspace-theme="light"] :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) :is(.object-remove, .danger, .danger-button):hover:not(:disabled) { color: #87251e; background: #fae5df; }
+:root[data-workspace-theme="light"] .cinematic-studio :is(input, select, textarea):hover:not(:disabled):not(:read-only) { border-color: #656d70; }
+:root[data-workspace-theme="light"] .cinematic-studio :is(input, textarea)::placeholder { color: #687175; }
+:root[data-workspace-theme="light"] .cinematic-studio :is(input[readonly], textarea[readonly]) { color: var(--cinema-secondary); background: #eeece5; border-color: var(--cinema-control); }
+:root[data-workspace-theme="light"] .cinematic-studio :is(input, select, textarea):disabled,
+:root[data-workspace-theme="light"] .cinematic-studio fieldset:disabled :is(input, select, textarea) { color: #707578; background: #e9e6df; border-color: #aaa99f; opacity: 1; }
+:root[data-workspace-theme="light"] .cinematic-studio fieldset:disabled :is(label, legend, .checkbox-label, .style-recommendation, .director-help, .scope-note) { color: #707578; }
+:root[data-workspace-theme="light"] .cinematic-studio :is(input, select, textarea)[aria-invalid="true"] { border-color: var(--cinema-danger); }
+
+/* Intent, director controls and object editor. Geometry is still owned by React;
+   brightness/lighting inside the scene remains an explicit picture setting. */
+:root[data-workspace-theme="light"] .cinematic-studio :is(.tabs, .image-switch, .director-segments) { background: var(--cinema-side); border-color: var(--cinema-control); }
+:root[data-workspace-theme="light"] .cinematic-studio :is(.tabs, .image-switch, .director-segments) > button { color: var(--cinema-secondary); background: transparent; border-color: transparent; }
+:root[data-workspace-theme="light"] .cinematic-studio :is(.tabs, .image-switch, .director-segments) > button.selected { color: var(--cinema-text); background: var(--cinema-field); border-color: var(--cinema-control); }
+:root[data-workspace-theme="light"] .cinematic-studio :is(.director-slot-tabs, .style-presets, .object-tabs) > button { color: var(--cinema-secondary); background: var(--cinema-field); border-color: var(--cinema-control); }
+:root[data-workspace-theme="light"] .cinematic-studio :is(.director-slot-tabs, .style-presets, .object-tabs) > button.selected { color: var(--cinema-text); background: #e8dfcf; border-color: var(--cinema-amber); }
+:root[data-workspace-theme="light"] .cinematic-studio .style-presets > button.selected strong { color: var(--cinema-text); }
+:root[data-workspace-theme="light"] .cinematic-studio .style-recommendation { color: var(--cinema-amber); background: #f2eadd; border-color: #aa9271; }
+:root[data-workspace-theme="light"] .cinematic-studio .style-recommendation small { color: var(--cinema-secondary); }
+:root[data-workspace-theme="light"] .cinematic-studio .canvas-surround { background: #e5e1d8; border-color: var(--cinema-line); }
+:root[data-workspace-theme="light"] .cinematic-studio .director-canvas { background-color: #ddd9cf; color: #353e43; border-color: #7d8585; }
+:root[data-workspace-theme="light"] .cinematic-studio .director-canvas.with-grid { background-image: linear-gradient(to right, #48566124 1px, transparent 1px), linear-gradient(to bottom, #48566124 1px, transparent 1px); }
+:root[data-workspace-theme="light"] .cinematic-studio .director-canvas.mood-low { color: #eef1f1; background-color: #29343c; border-color: #596973; }
+:root[data-workspace-theme="light"] .cinematic-studio .director-canvas.mood-high { color: #353e43; background-color: #fffcf0; border-color: #a7aaa0; }
+:root[data-workspace-theme="light"] .cinematic-studio .scene-object { color: #252c30; background: #fffaf0ed; border-color: #7e694c; }
+:root[data-workspace-theme="light"] .cinematic-studio .scene-object.depth-background { color: #30393f; background: #e9e5d9ed; border-color: #6e7577; }
+:root[data-workspace-theme="light"] .cinematic-studio .scene-object.depth-foreground { color: #252c30; background: #e8d8b8f2; }
+:root[data-workspace-theme="light"] .cinematic-studio .scene-object.selected { color: #252c30; background: #f4e5c8f2; border-color: #80521d; box-shadow: 0 0 0 2px #fffcf5; }
+:root[data-workspace-theme="light"] .cinematic-studio .resize-handle::before { border-color: #80521d; }
+:root[data-workspace-theme="light"] .cinematic-studio .canvas-empty { color: inherit; }
+:root[data-workspace-theme="light"] .cinematic-studio .canvas-empty :is(strong, small) { color: inherit; opacity: 1; }
+:root[data-workspace-theme="light"] .cinematic-studio :is(.intent-style, .intent-objects span) { color: var(--cinema-secondary); }
+:root[data-workspace-theme="light"] .cinematic-studio .intent-objects li { background: var(--cinema-side); border-color: var(--cinema-line); }
+:root[data-workspace-theme="light"] .cinematic-studio .asset-preview { background: #e7e2d8; }
+:root[data-workspace-theme="light"] .cinematic-studio .asset-card.asset-selected { border-color: var(--cinema-good); }
+:root[data-workspace-theme="light"] .cinematic-studio .export-option { background: var(--cinema-field); border-color: var(--cinema-control); }
+:root[data-workspace-theme="light"] .cinematic-studio :is(.export-option, .export-history, .add-slot):hover:not(:disabled) { color: var(--cinema-text); background: var(--cinema-raised); border-color: var(--cinema-control); }
+
+/* Status color stays semantic, with text contrast independent of color alone. */
+:root[data-workspace-theme="light"] .cinematic-studio .pill { color: var(--cinema-secondary); background: var(--cinema-side); border-color: var(--cinema-control); }
+:root[data-workspace-theme="light"] .cinematic-studio .pill.green { color: #285d42; background: #e7efe6; border-color: #72927b; }
+:root[data-workspace-theme="light"] .cinematic-studio .pill.orange { color: #764b18; background: #f5ead8; border-color: #a48a62; }
+:root[data-workspace-theme="light"] .cinematic-studio .status-dot { background: var(--cinema-good); }
+:root[data-workspace-theme="light"] .cinematic-studio .status-dot.warning { background: var(--cinema-amber); }
+:root[data-workspace-theme="light"] .cinematic-studio .alert { color: var(--cinema-secondary); background: var(--cinema-side); border-color: var(--cinema-control); }
+:root[data-workspace-theme="light"] .cinematic-studio .alert.error { color: #8e3028; background: #fae9e3; border-color: #b47064; }
+:root[data-workspace-theme="light"] .cinematic-studio .alert.warning { color: #704b1e; background: #f7eddc; border-color: #aa8b5f; }
+:root[data-workspace-theme="light"] .cinematic-studio .alert.success { color: #2d6044; background: #e7eee4; border-color: #7b9780; }
+:root[data-workspace-theme="light"] .cinematic-studio :is(.inline-warning, .cloud-dirty) { color: var(--cinema-amber); border-color: #aa8b5f; }
+:root[data-workspace-theme="light"] .cinematic-studio .provider-diagnosis { color: #704b1e; background: #f7eddc; border-color: #aa8b5f; }
+:root[data-workspace-theme="light"] .cinematic-studio .spinner { border-color: #a7aaa4; border-top-color: var(--cinema-good); }
+:root[data-workspace-theme="light"] .cinematic-studio .dropzone { color: var(--cinema-secondary); background: var(--cinema-field); border-color: var(--cinema-control); }
+:root[data-workspace-theme="light"] .cinematic-studio .dropzone.dragging { color: var(--cinema-text); background: #e8dfcf; border-color: var(--cinema-amber); }
+
+/* Paper is always paper, including night mode. Keep source prose, paragraph
+   labels and the inserted-figure caption dark on that opaque preview. */
+:root[data-workspace-theme="light"] .cinematic-studio .source-card { color: var(--cinema-ink); background: var(--cinema-paper); border-color: var(--cinema-line); }
+:root[data-workspace-theme="light"] .cinematic-studio .source-card :is(.card-bar, .card-foot) { color: var(--cinema-secondary); background: #eee9df; border-color: var(--cinema-line); }
+:root[data-workspace-theme="light"] .cinematic-studio .source-card .card-bar :is(span, strong, h3, svg) { color: var(--cinema-secondary); }
+:root[data-workspace-theme="light"] .cinematic-studio .paragraph-index { color: #626a70; }
+
+/* The history panel and navigation guard can sit beside the home, outside the
+   studio subtree. Theme only these opaque panels and their backdrops. */
+:root[data-workspace-theme="light"] :is(.mobile-history-overlay, .navigation-confirm-overlay) { background: #1b211f75; }
+:root[data-workspace-theme="light"] :is(.mobile-history-panel, .navigation-confirm-panel) { color: var(--cinema-text); background: var(--cinema-surface); border-color: var(--cinema-control); box-shadow: 0 24px 80px #1c252a30; }
+:root[data-workspace-theme="light"] .mobile-history-panel :is(.history-drawer-heading h2, .task-item) { color: var(--cinema-text); }
+:root[data-workspace-theme="light"] .mobile-history-panel .history-drawer-heading .icon-button { color: var(--cinema-secondary); background: transparent; }
+:root[data-workspace-theme="light"] .mobile-history-panel .history-drawer-heading { border-color: var(--cinema-line); }
+:root[data-workspace-theme="light"] .mobile-history-panel :is(.history-drawer-heading h2 small, .eyebrow) { color: var(--cinema-muted); }
+:root[data-workspace-theme="light"] .navigation-confirm-panel .navigation-confirm-actions button { color: var(--cinema-secondary); background: var(--cinema-field); border-color: var(--cinema-control); }
+:root[data-workspace-theme="light"] .navigation-confirm-panel .navigation-confirm-actions .primary { color: #fffaf0; background: #292e32; border-color: #292e32; }
+:root[data-workspace-theme="light"] .navigation-confirm-panel .navigation-confirm-actions :is(.danger, .text-button) { color: #8e3028; background: #fae9e3; border-color: #b47064; }
+:root[data-workspace-theme="light"] .navigation-confirm-panel .navigation-confirm-actions button:hover:not(:disabled) { border-color: var(--cinema-focus); }
+
+/* Last: locked states must beat selected/hovered component-specific rules. */
+:root[data-workspace-theme="light"] :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) button:disabled:not(.resize-handle),
+:root[data-workspace-theme="light"] .cinematic-studio fieldset:disabled button:not(.resize-handle),
+:root[data-workspace-theme="light"] .cinematic-studio button[aria-disabled="true"] { color: #707578; background-color: #e9e6df; border-color: #aaa99f; opacity: 1; cursor: not-allowed; box-shadow: none; }
+:root[data-workspace-theme="light"] .cinematic-studio button:disabled:not(.resize-handle) :is(strong, small, span),
+:root[data-workspace-theme="light"] .cinematic-studio fieldset:disabled button:not(.resize-handle) :is(strong, small, span) { color: inherit; }
+:root[data-workspace-theme="light"] .cinematic-studio .resize-handle:disabled::before { border-color: #777c7d; }
+
+@media (max-width: 650px) {
+  .cinematic-studio .workspace-tools { min-width: 0; flex-wrap: wrap; }
+  .cinematic-studio .workspace-tools > .theme-switcher { flex: 0 1 auto; max-width: 100%; }
+  :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) .theme-choice > span { min-height: 44px; padding-left: 9px; padding-right: 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) .theme-switcher * { transition: none; animation: none; }
+}
+@media (forced-colors: active) {
+  :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) .theme-choice input:checked + span { border: 2px solid Highlight; }
+  :is(.cinematic-studio, .mobile-history-panel, .navigation-confirm-panel) .theme-choice input:focus-visible + span { outline-color: Highlight; }
+}

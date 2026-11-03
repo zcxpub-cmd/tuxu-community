@@ -38,3 +38,6 @@ local-agent-requests/
 model-dist/
 *.gguf
 *.gguf.part-*
+
+# Local Vite SSR/test optimizer cache.
+.vite/

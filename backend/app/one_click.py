@@ -12,17 +12,20 @@ from fastapi import HTTPException
 
 ACTIVE = frozenset({'running', 'waiting'})
 STATUSES = ACTIVE | {'completed', 'failed', 'cancelled', 'paused'}
-STAGES = frozenset({'analysis', 'approval', 'generation', 'selection', 'export', 'completed'})
+STAGES = frozenset({'analysis', 'approval', 'generation', 'visual_review', 'selection', 'export', 'completed'})
 MESSAGES = {
     'analysis': '正在阅读全文，规划不超过授权数量的配图。',
     'approval': '正在使用本地模型准备推荐画风与画面描述。',
     'generation': '正在按已冻结授权生成图片，每个图位最多尝试一次。',
     'selection': '全部当前图片已返回，正在选用原图。',
+    'visual_review': '正在使用本地视觉模型逐张检查图片，不会自动重画。',
+    'visual_attention': '图片检查需要人工处理；已保留原图，请查看检查结果后继续。',
     'export': '正在生成带图文档。',
     'completed': '全部图片与文档已生成，请检查图片内容和文档排版。',
     'zero': '文章无需新增插图，已保留原文并导出文档。',
     'cancelled': '一键流程已停止；已提交图片仍保留结果，不再自动选图或导出。',
     'failed': '一键流程未全部完成，已停止；已返回图片保留，不会自动重试或缺图导出。',
+    'prompt_failed': '画面描述准备失败，尚未提交生图。已保留分析方案，请切换人工设置，检查画面描述后重新确认。',
     'unknown': '执行结果尚不能确认，已暂停；请核查原任务，不会重新提交。',
     'changed': '文章或模型配置已改变，一键流程已暂停，请切换人工模式检查。',
 }
@@ -133,7 +136,9 @@ class OneClick:
         automation = task['automation']
         consent = automation['_consent']
         return (base_hash(task) == consent['base_hash'] and
-                self._target(consent['body']) == consent['target'])
+                self._target(consent['body']) == consent['target'] and
+                ('builtin_agent' not in consent or
+                 self.service.builtin_agent.snapshot(consent['body']['model']) == consent['builtin_agent']))
 
     def check_approved_target(self, task, targets, agent_revision=None):
         if self.current() is None:
@@ -146,6 +151,10 @@ class OneClick:
                     raise HTTPException(409, '一键目标配置已改变。')
         if 'agent_revision' in frozen and frozen['agent_revision'] != agent_revision:
             raise HTTPException(409, '一键智能体配置已改变。')
+        consent = task['automation']['_consent']
+        if ('builtin_agent' in consent and
+                self.service.builtin_agent.snapshot(task['plan']['model']) != consent['builtin_agent']):
+            raise HTTPException(409, '内置智能体设置已改变，请重新确认。')
 
     def start_run(self, task_id, body):
         from .models import TEXT_MODEL
@@ -181,6 +190,7 @@ class OneClick:
         except Exception:
             raise HTTPException(409, '所选生图服务尚未就绪。') from None
         run_id = str(uuid.uuid4())
+        builtin_profile = self.service.builtin_agent.snapshot(value['model'])
         def begin(current):
             previous = current.get('automation')
             if previous:
@@ -194,7 +204,8 @@ class OneClick:
                 'format': value['format'], 'max_images': value['max_images'], 'completed_images': 0, 'total_images': 0,
                 '_key': key, '_body_hash': body_hash, '_actions': {}, '_consent': {
                     'base_hash': base_hash(current), 'article_sha256': current['document']['source_hash'],
-                    'body': copy.deepcopy(value), 'target': target, 'one_attempt_per_slot': True}}
+                    'body': copy.deepcopy(value), 'target': target, 'one_attempt_per_slot': True,
+                    'builtin_agent': builtin_profile, 'preparation_failure_protocol': 1}}
         current, _ = self.service.update(task_id, begin)
         self._event(task_id, current['automation']['id'])
         return current
@@ -226,7 +237,45 @@ class OneClick:
                     raise HTTPException(409, '一键步骤已提交。')
                 automation['_actions'][stage] = {'state': 'intent'}
             self._update(task_id, run_id, intent)
-            self.actions[stage](task_id, body)
+            try:
+                self.actions[stage](task_id, body)
+            except HTTPException as exc:
+                if not self._record_prompt_failure(task_id, run_id, stage, exc):
+                    raise
+
+    def _record_prompt_failure(self, task_id, run_id, stage, error):
+        """A confirmed local preparation rejection is distinct from an unknown image effect."""
+        if stage != 'approval' or error.status_code != 422:
+            return False
+        try:
+            if not self._check_scope(self.service.require(task_id)):
+                return False
+        except Exception:
+            return False
+        def failed(task):
+            self.guard(task)
+            run = task['automation']
+            action = run['_actions'].get(stage) or {}
+            if (run['stage'] != stage or action.get('state') != 'intent' or task.get('_prompting') or
+                    task.get('_prompt_preparation_failure') != {
+                        'kind': 'model_validation', 'run_id': run_id, 'plan_hash': digest(task.get('plan'))} or
+                    task.get('approval') or not task.get('plan') or task.get('status') != 'plan_ready' or
+                    not task.get('error') or task.get('assets') or task.get('exports') or
+                    any(job.get('kind') != 'analysis' for job in task.get('jobs', [])) or
+                    ('builtin_agent' in run['_consent'] and
+                     self.service.builtin_agent.snapshot(task['plan']['model']) != run['_consent']['builtin_agent'])):
+                return False
+            action.update(state='failed', code='prompt_preparation_failed')
+            run.update(status='failed', message=MESSAGES['prompt_failed'])
+            task.update(status='failed', error=MESSAGES['prompt_failed'])
+            return True
+        try:
+            _, handled = self.service.update(task_id, failed)
+        except HTTPException:
+            return False
+        if handled:
+            self._event(task_id, run_id).set()
+        return handled
 
     def _advance(self, task_id, run_id, stage):
         self._update(task_id, run_id, lambda _task, automation: automation.update(stage=stage, status='running', message=MESSAGES[stage]))
@@ -291,9 +340,27 @@ class OneClick:
             elif busy(task) or unresolved(task):
                 self._update(task_id, run_id, lambda _task, run: run.update(status='waiting'))
             elif all(slot['id'] in assets for slot in task['plan']['slots']):
-                self._advance(task_id, run_id, 'selection')
+                profile = (task.get('approval') or {}).get('_builtin_agent') or {}
+                self._advance(task_id, run_id, 'visual_review' if profile.get('visual_review_enabled') else 'selection')
             else:
                 self._halt(task_id, run_id, 'failed', MESSAGES['failed'])
+        elif stage == 'visual_review':
+            report = self.service.builtin_agent.summary(task)
+            if report['status'] == 'passed':
+                self._advance(task_id, run_id, 'selection')
+            elif report['status'] in ('needs_attention', 'unavailable', 'interrupted'):
+                self._halt(task_id, run_id, 'paused', MESSAGES['visual_attention'])
+            else:
+                pending = [asset for asset in task['assets'] if current_asset(task, asset)]
+                if any((asset.get('_builtin_visual_review') or {}).get('status') in ('queued', 'running') for asset in pending):
+                    self._update(task_id, run_id, lambda _task, run: run.update(status='waiting'))
+                    return
+                for slot in task['plan']['slots']:
+                    asset = next((asset for asset in pending if asset['slot_id'] == slot['id']), None)
+                    if asset and not asset.get('_builtin_visual_review'):
+                        self.service.builtin_agent.request_review(task_id, asset['id'], confirm=True, automated=True)
+                        return
+                self._halt(task_id, run_id, 'paused', MESSAGES['visual_attention'])
         elif stage == 'selection':
             if not action:
                 selections = {}

@@ -1,13 +1,13 @@
 import type { CloudCatalog } from './types'
 
 /** All App catalog publishers share this clock, including settings and bootstrap. */
-export function createCatalogGate() {
+export function createCatalogGate<T = CloudCatalog>() {
   let epoch = 0
-  let latest: CloudCatalog | undefined
+  let latest: T | undefined
   return {
     capture: () => epoch,
     latest: () => latest,
-    publish(catalog: CloudCatalog, expectedEpoch?: number): boolean {
+    publish(catalog: T, expectedEpoch?: number): boolean {
       if (expectedEpoch !== undefined && expectedEpoch !== epoch) return false
       latest = catalog; epoch++
       return true

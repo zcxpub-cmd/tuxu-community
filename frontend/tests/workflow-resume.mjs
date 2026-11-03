@@ -1,12 +1,32 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { completedStages, taskStage } from '../src/workflow.ts'
+import { completedStages, needsFileImportConfirmation, taskStage } from '../src/workflow.ts'
 
 const oldExport = { filename: 'synthetic-old-v1.docx', format: 'docx' }
 const plan = { version: 2, slots: [{ id: 'slot-current', paragraph_id: 'p0' }] }
 const approval = { id: 'approval-current' }
 const base = { status: 'imported', plan: null, approval: null, assets: [], selections: {}, jobs: [], exports: [] }
 const historical = { ...base, exports: [oldExport] }
+
+test('file import preserves metadata without asking to discard it', () => {
+  const draft = { title: '新闻导入测试', genre: 'news', style: '自然摄影', text: '', planDirty: false }
+  const before = structuredClone(draft)
+  assert.equal(needsFileImportConfirmation(draft), false, 'Title, genre and style are carried into the same file import, so nothing is discarded')
+  assert.equal(needsFileImportConfirmation({ ...draft, text: ' \n\t' }), false, 'Whitespace alone is not an unsaved article body')
+  assert.deepEqual(draft, before, 'Import confirmation projection never clears the title or changes metadata')
+})
+
+test('file import still protects a meaningful unsaved article body', () => {
+  for (const text of ['尚未保存的正文。', ' \n尚未保存的正文。\n ']) {
+    assert.equal(needsFileImportConfirmation({ title: '新闻稿', text, planDirty: false }), true)
+  }
+})
+
+test('file import protects unsaved plan edits even with no pasted body', () => {
+  assert.equal(needsFileImportConfirmation({ title: '已导入的文章', text: '', planDirty: true }), true)
+  assert.equal(needsFileImportConfirmation({ title: '', text: '正文', planDirty: true }), true)
+})
+
 
 test('old export history never promotes an imported task to completed delivery', () => {
   assert.equal(taskStage(historical), 0)

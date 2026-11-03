@@ -1,6 +1,6 @@
 {
   "name": "tuxu-local-workbench",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -19,7 +19,8 @@
     "test:workflow": "node tests/workflow-resume.mjs",
     "test:native-image": "node tests/native-image-notice.mjs",
     "test:theme": "node tests/theme.mjs",
-    "test:one-click": "node tests/one-click.mjs"
+    "test:one-click": "node tests/one-click.mjs",
+    "test:builtin-agent": "node tests/builtin-agent.mjs"
   },
   "dependencies": {
     "@gsap/react": "2.1.2",

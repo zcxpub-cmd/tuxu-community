@@ -376,8 +376,11 @@ def test_invalid_isolated_object_conversion_has_no_shared_region_fallback(object
     adapter = Adapter()
     with pytest.raises(ModelError):
         adapter.prompts([{'id': 's', 'description': '批准画面', 'director': configured()}], '统一风格', 'fake-text')
-    assert adapter.calls == 2
-    assert [item['phase'] for item in adapter.last_prompt_evidence] == ['scene', 'object']
+    cjk = object_response.get('text') == '绿色树木'
+    assert adapter.calls == (3 if cjk else 2)
+    assert [item['phase'] for item in adapter.last_prompt_evidence] == ['scene', 'object'] + (['object_repair'] if cjk else [])
+    if cjk:
+        assert adapter.last_prompt_evidence[-1]['repair_reason'] == 'english'
 
 
 @pytest.mark.parametrize('bad_text', ['A tree with no writing.', 'A scene without words.', 'Avoid signs.', 'Do not add a house.'])
@@ -439,7 +442,7 @@ def test_actual_scene_repair_uses_same_original_payload_and_schema_then_isolates
 
 
 @pytest.mark.parametrize('bad_value', ['', None, True, '中文 no text', 'x' * 5501])
-def test_invalid_english_scene_does_not_qualify_for_exclusion_repair(bad_value):
+def test_invalid_english_scene_only_bounded_cjk_qualifies_for_language_correction(bad_value):
     from backend.app.models import ModelError
     class Adapter(OllamaAdapter):
         def _chat(self, model, system, payload, output_format='json'):
@@ -448,7 +451,11 @@ def test_invalid_english_scene_does_not_qualify_for_exclusion_repair(bad_value):
     adapter = Adapter()
     with pytest.raises(ModelError):
         adapter.prompts([{'id': 's', 'description': '批准画面', 'director': configured()}], '统一风格', 'fake-text')
-    assert adapter.calls == 1 and [item['phase'] for item in adapter.last_prompt_evidence] == ['scene']
+    cjk = bad_value == '中文 no text'
+    assert adapter.calls == (2 if cjk else 1)
+    assert [item['phase'] for item in adapter.last_prompt_evidence] == ['scene'] + (['scene_repair'] if cjk else [])
+    if cjk:
+        assert adapter.last_prompt_evidence[-1]['repair_reason'] == 'english'
 
 
 @pytest.mark.parametrize('clause,noun', [('No text.', 'text'), ('without text.', 'text'),

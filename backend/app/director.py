@@ -25,7 +25,7 @@ STYLES = {
 STYLE_GUIDANCE = {
     'inherit': 'Follow the supplied overall style while preserving the described facts.',
     'editorial': 'Use a clear visual hierarchy and a restrained publication illustration.',
-    'photographic': 'Use plausible perspective, visible material texture and one consistent light direction; this is a generated illustration, not documentary evidence.',
+    'photographic': 'Use plausible perspective, visible material texture and one consistent light direction; this is a generated illustration, not documentary evidence. For an abstract research conclusion, depict a concrete real-world subject named in the approved scene instead of inventing a diagram, molecular structure, experiment or scientific labeling. Keep exact mechanisms and terminology in the document caption.',
     'watercolor': 'Use translucent pigment, soft edge variation and paper texture while keeping the main subject readable.',
     'ink': 'Use deliberate ink lines, tonal washes and open space that support the described subject.',
     'flat': 'Use simple flat shapes, a limited palette and clear separation of the main elements.',

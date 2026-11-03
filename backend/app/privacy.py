@@ -21,6 +21,7 @@ from pathlib import Path
 from PIL import Image
 from .cloud import PUBLIC_CLOUD_MESSAGES
 from .one_click import MESSAGES as AUTOMATION_MESSAGES, STAGES as AUTOMATION_STAGES, STATUSES as AUTOMATION_STATUSES
+from .builtin_agent import public_review
 
 _PUBLIC_ERROR_MESSAGES = PUBLIC_CLOUD_MESSAGES | frozenset(AUTOMATION_MESSAGES.values()) | frozenset({
     '本机智能体配置已改变，请重新确认当前方案。',
@@ -68,7 +69,9 @@ def _drop_global_text(value):
     """Private conditioning fields can occur in nested snapshots; never expose them."""
     if isinstance(value, dict):
         return {key: _drop_global_text(item) for key, item in value.items()
-                if key not in ('global_text', 'conditioning_mode', 'prompt_failure_evidence')}
+                if key not in ('global_text', 'conditioning_mode', 'prompt_failure_evidence',
+                               '_builtin_agent', '_builtin_visual_review', '_agent_activity',
+                               '_prompt_preparation_failure')}
     if isinstance(value, list):
         return [_drop_global_text(item) for item in value]
     return value
@@ -76,9 +79,20 @@ def _drop_global_text(value):
 
 def public_task(task):
     result = copy.deepcopy(task)
+    for asset in result.get('assets', []):
+        # Never trust stored public-looking data or free-form model messages.
+        asset.pop('visual_review', None)
+        review = public_review(asset.get('_builtin_visual_review'))
+        if review is not None:
+            asset['visual_review'] = review
     result = _drop_global_text(result)
     automation = result.pop('automation', None)
     if isinstance(automation, dict):
+        private_actions = automation.get('_actions')
+        approval_action = private_actions.get('approval') if isinstance(private_actions, dict) else None
+        private_consent = automation.get('_consent')
+        legacy_protocol = (private_consent is None or isinstance(private_consent, dict) and
+                           'preparation_failure_protocol' not in private_consent)
         identifier = automation.get('id')
         safe = {'id': identifier if isinstance(identifier, str) and re.fullmatch(r'[a-f0-9-]{36}', identifier) else '',
                 'status': automation.get('status') if automation.get('status') in AUTOMATION_STATUSES else 'paused',
@@ -91,6 +105,16 @@ def public_task(task):
         url = automation.get('export_url')
         if isinstance(url, str) and re.fullmatch(r'/api/exports/[a-f0-9-]{36}/[a-f0-9-]{36}\.(?:docx|zip|html)', url):
             safe['export_url'] = url
+        # Old preparation failures used the generic unknown message. Correct the
+        # explanation without replaying or rewriting the preserved user task.
+        if (automation.get('status') == 'paused' and automation.get('stage') == 'approval' and
+                isinstance(approval_action, dict) and approval_action.get('state') == 'intent' and
+                legacy_protocol and '_prompt_preparation_failure' not in task and
+                not task.get('_prompting') and not task.get('approval') and not task.get('assets') and
+                not task.get('exports') and task.get('plan') and
+                all(job.get('kind') == 'analysis' for job in task.get('jobs', [])) and
+                task.get('error') == '独立画面提示词未得到有效英文，请重新转换。'):
+            safe['message'] = AUTOMATION_MESSAGES['prompt_failed']
         result['automation'] = safe
     for key in ('source_path', 'edited_prompt_ids', 'cancel_requested', '_prompting', 'prompts'):
         result.pop(key, None)

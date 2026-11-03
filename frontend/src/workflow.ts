@@ -1,9 +1,25 @@
 import type { Task } from './types'
+import { visualReviewActive } from './builtinAgent.ts'
 
 export const stages = ['文章与设置', '配图方案', '画面导演台', '授权与生成', '选图与处理', '插入与导出']
 
+/** File import keeps title/genre/style; only an unsaved body or plan is replaced. */
+export function needsFileImportConfirmation({ text, planDirty }: { text: string; planDirty: boolean }): boolean {
+  return planDirty || text.trim().length > 0
+}
+
+
+const statusNames: Record<string, string> = { imported: '已导入', analyzing: '正在阅读', plan_ready: '方案待确认', approved: '已授权', generating: '正在生成', awaiting_agent: '等待智能体图片', review: '待选图', exported: '已导出', failed: '需要处理', cancelled: '已取消' }
+/** A safety halt is not a user cancellation. A later real manual export remains current. */
+export function taskStatusPresentation(task: Pick<Task, 'status' | 'automation'>): { label: string; tone: 'orange' | 'green' } {
+  if (task.status === 'cancelled' && task.automation?.status === 'paused') return { label: '需人工处理', tone: 'orange' }
+  return { label: statusNames[task.status] || task.status, tone: task.status === 'failed' ? 'orange' : 'green' }
+}
+
+
 /** Resume the current operation/result; export history can belong to an old plan. */
 export function taskStage(task: Task): number {
+  if (visualReviewActive(task)) return 4
   if (task.status === 'awaiting_agent' || task.jobs?.some(job => job.status === 'awaiting_agent')) return 4
   if (task.status === 'analyzing') return 1
   if (task.status === 'generating') return 4

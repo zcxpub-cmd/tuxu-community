@@ -32,6 +32,7 @@ from .paths import default_data_directory
 from .local_agent import LocalAgentBridge, REJECTED as AGENT_REJECTED, RUNNING as AGENT_RUNNING
 from .image_geometry import fits_requested_canvas, native_canvas_notice
 from .one_click import OneClick
+from .builtin_agent import BuiltinAgentRuntime
 
 ROOT = Path(__file__).resolve().parents[2]
 GENRES = ['academic', 'news', 'novel', 'report']
@@ -45,6 +46,59 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()
 
 
+def prompt_failure_receipts(evidence):
+    """Retain typed counters/flags only, never arbitrary model metadata text."""
+    if not isinstance(evidence, list):
+        return []
+    result = []
+    enums = {'phase': {'scene', 'object', 'background', 'scene_repair', 'object_repair', 'background_repair'},
+             'request_state': {'requesting', 'completed', 'failed'},
+             'done_reason': {'stop', 'length', 'load'}, 'repair_reason': {'english'},
+             'error_type': {'ModelError', 'HTTPStatusError', 'ReadTimeout', 'ConnectTimeout',
+                            'ConnectError', 'ReadError', 'RemoteProtocolError', 'ValueError', 'RuntimeError'}}
+    content_fields = {'text', 'negative', 'background_text'}
+    for item in evidence[:100]:
+        if not isinstance(item, dict):
+            continue
+        safe = {}
+        for key, choices in enums.items():
+            value = item.get(key)
+            if isinstance(value, str) and value in choices:
+                safe[key] = value
+        for key in ('result_valid', 'done'):
+            if type(item.get(key)) is bool:
+                safe[key] = item[key]
+        for key in ('prompt_eval_count', 'eval_count', 'total_duration'):
+            if type(item.get(key)) is int and 0 <= item[key] <= 2**63 - 1:
+                safe[key] = item[key]
+        value = item.get('input_sha256')
+        if isinstance(value, str) and re.fullmatch('[0-9a-f]{64}', value):
+            safe['input_sha256'] = value
+        value = item.get('repaired_fields')
+        if isinstance(value, list) and len(value) <= 3 and all(isinstance(v, str) and v in content_fields for v in value):
+            safe['repaired_fields'] = value[:]
+        checks = item.get('field_checks')
+        if isinstance(checks, dict):
+            checked = {}
+            for field in sorted(content_fields):
+                row = checks.get(field)
+                if not isinstance(row, dict):
+                    continue
+                entry = {}
+                if row.get('type') in ('missing', 'null', 'string', 'boolean', 'number', 'array', 'object', 'other'):
+                    entry['type'] = row['type']
+                length = row.get('length')
+                if length is None or type(length) is int and 0 <= length <= 2**63 - 1:
+                    entry['length'] = length
+                for flag in ('blank', 'has_cjk', 'has_ascii'):
+                    if row.get(flag) is None or type(row.get(flag)) is bool:
+                        entry[flag] = row.get(flag)
+                checked[field] = entry
+            safe['field_checks'] = checked
+        result.append(safe)
+    return result
+
+
 def public(task):
     return public_task(task)
 
@@ -54,7 +108,9 @@ def bad(message, status=400):
 
 
 def busy(task):
-    return task.get('_prompting') or any(j['status'] in ('queued', 'running', 'awaiting_agent') for j in task['jobs'])
+    return (task.get('_prompting') or any(j['status'] in ('queued', 'running', 'awaiting_agent') for j in task['jobs']) or
+            any((asset.get('_builtin_visual_review') or {}).get('status') in ('queued', 'running')
+                for asset in task.get('assets', [])))
 
 
 def unresolved(task):
@@ -63,6 +119,7 @@ def unresolved(task):
 
 def invalidate(task, clear_prompts=False):
     task['approval'] = None
+    task.pop('_prompt_preparation_failure', None)
     task.pop('prompt_failure_evidence', None)
     task['selections'] = {}
     if clear_prompts:
@@ -88,7 +145,7 @@ def snapshot(task):
     result = {'document_hash': task['document']['source_hash'], 'plan_version': task['plan']['version'],
               'plan_hash': digest(task['plan']), 'prompt_hash': prompt_hash(task),
               'checkpoint': approval['checkpoint'], 'approval_id': approval['id']}
-    for field in ('image_target', 'image_targets', 'local_agent_revision'):
+    for field in ('image_target', 'image_targets', 'local_agent_revision', '_builtin_agent'):
         if field in approval:
             result[field] = copy.deepcopy(approval[field])
     for key in ('document_hash', 'plan_version', 'plan_hash', 'prompt_hash', 'checkpoint'):
@@ -231,6 +288,7 @@ class Service:
         self.asset_locks_guard = threading.Lock()
         self.local_agent = LocalAgentBridge(self)
         self.one_click = OneClick(self)
+        self.builtin_agent = BuiltinAgentRuntime(self)
 
     def asset_lock(self, task_id, asset_id):
         with self.asset_locks_guard:
@@ -292,6 +350,7 @@ class Service:
         self.executor.submit(self.run_job, task_id, job_id)
 
     def recover(self):
+        self.builtin_agent.recover()
         self.one_click.recover()
         for task in self.store.list():
             if task.get('_prompting'):
@@ -356,7 +415,7 @@ class Service:
         if task.get('cancel_requested'):
             self.finish(task_id, job_id, 'cancelled', '分析已取消，未开始模型请求。')
             return
-        result = self.ollama.analyze(task['document'], task['genre'], task['style'], job['model'])
+        result = self.builtin_agent.analyze(task['document'], task['genre'], task['style'], job['model'])
         coverage = result.get('coverage')
         expected = [p['id'] for p in task['document']['paragraphs']]
         if not isinstance(coverage, list) or len(coverage) != len(expected) or set(coverage) != set(expected):
@@ -749,10 +808,11 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         service.one_click.start()
         yield
         service.one_click.stop()
+        service.builtin_agent.stop()
         service.local_agent.stop()
         service.executor.shutdown(wait=False, cancel_futures=True)
 
-    app = FastAPI(title='图序社区版 · Tuxu Community', version='0.6.0', lifespan=lifespan)
+    app = FastAPI(title='图序社区版 · Tuxu Community', version='0.7.0', lifespan=lifespan)
     app.state.service = service
 
     @app.exception_handler(RequestValidationError)
@@ -793,14 +853,31 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         image = service.comfy.health()
         checkpoints = image.get('checkpoints', [])
         cloud = service.local_agent.catalog()
+        builtin = service.builtin_agent.catalog()
         preferred = next((p['id'] for p in cloud['profiles'] if p.get('ready') and
                           p.get('verification', {}).get('generation') == 'succeeded' and
                           p.get('verification', {}).get('connection') != 'failed'), 'local')
-        return {'application': {'id': 'tuxu-community', 'version': '0.6.0'},
+        return {'application': {'id': 'tuxu-community', 'version': '0.7.0'},
                 'token': service.store.token, 'genres': GENRES, 'tasks': [public(t) for t in service.store.list()],
-                'models': {'ollama': text, 'comfy': image, 'cloud': cloud, 'local_agent': service.local_agent.status()}, 'defaults': {'text_model': text.get('model', TEXT_MODEL),
+                'models': {'ollama': text, 'comfy': image, 'cloud': cloud, 'local_agent': service.local_agent.status(),
+                           'builtin_agent': builtin}, 'defaults': {'text_model': builtin['model'],
                 'image_provider': preferred,
                 'image_checkpoint': checkpoints[0] if checkpoints else '', 'style': DEFAULT_STYLE}}
+
+    @app.get('/api/builtin-agent')
+    def builtin_agent_settings():
+        return service.builtin_agent.catalog()
+
+    @app.put('/api/builtin-agent')
+    def configure_builtin_agent(body: dict):
+        return service.builtin_agent.configure(body)
+
+    @app.post('/api/tasks/{task_id}/assets/{asset_id}/review')
+    def review_asset(task_id: str, asset_id: str, body: dict):
+        if set(body) != {'confirm'} or body.get('confirm') is not True:
+            bad('请明确确认使用本地模型检查当前图片。')
+        service.one_click.guard(service.require(task_id))
+        return public(service.builtin_agent.request_review(task_id, asset_id, confirm=True))
 
     @app.post('/api/local-agent')
     def configure_local_agent(body: dict):
@@ -970,6 +1047,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         try:
             image_targets = {}
             agent_revision = None
+            builtin_profile = service.builtin_agent.snapshot(approved['plan']['model'])
             with service.model_lock:
                 if provider != 'local':
                     if not approved['plan']['slots']:
@@ -983,21 +1061,27 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
                 # All new approvals, including external image engines and the
                 # local-agent bridge, use the same local text model. No cloud
                 # text-model or rule-based prompt fallback is permitted.
-                prompts = service.ollama.prompts(approved['plan']['slots'], approved['plan']['style'], approved['plan']['model'])
+                prompts = service.builtin_agent.prompts(approved['plan']['slots'], approved['plan']['style'], approved['plan']['model'])
                 prompts = validate_prompts(prompts, approved['plan']['slots'], english=True, require_background=True)
                 if provider == 'local':
                     prompts = validate_prompts(compile_controls(prompts, approved['plan']['slots'], conditioning_mode=MASKED_REGIONS_MODE),
+                                               approved['plan']['slots'], english=True, require_background=True)
+                else:
+                    prompts = validate_prompts(OllamaAdapter.single_input_prompts(prompts, approved['plan']['slots'], approved['plan']['style']),
                                                approved['plan']['slots'], english=True, require_background=True)
             def save(t):
                 service.one_click.guard(t)
                 if t['plan'] != approved['plan'] or t.get('cancel_requested'):
                     bad('批准流程被取消或版本改变，未保存授权。', 409)
+                if service.builtin_agent.snapshot(approved['plan']['model']) != builtin_profile:
+                    bad('内置智能体设置已改变，请重新确认。', 409)
                 t['prompts'] = prompts
                 t['approval'] = {'id': str(uuid.uuid4()), 'document_hash': t['document']['source_hash'],
                     'plan_version': t['plan']['version'], 'plan_hash': digest(t['plan']),
                     'prompt_hash': prompt_hash(t), 'checkpoint': checkpoint, 'max_attempts': attempts,
                     'attempts_used': 0, 'confirmed_at': now(),
                     'prompt_source': 'ollama_local_v2',
+                    '_builtin_agent': builtin_profile,
                     'prompt_evidence': getattr(service.ollama, 'last_prompt_evidence', [])}
                 if image_targets:
                     t['approval']['image_target'] = copy.deepcopy(next(iter(image_targets.values())))
@@ -1011,13 +1095,11 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
             task, _ = service.update(task_id, save)
             return public(task)
         except Exception as exc:
-            # Keep bounded, body-free records only for the explicitly requested
-            # background path; failed responses are never saved as prompt text.
-            failure_evidence = []
-            if provider == 'local' and any(slot.get('director', {}).get('background') for slot in approved['plan']['slots']):
-                fields = {'phase', 'request_state', 'result_valid', 'input_sha256', 'error_type'}
-                failure_evidence = [{key: value for key, value in item.items() if key in fields}
-                                    for item in getattr(service.ollama, 'last_prompt_evidence', [])]
+            # Preserve body-free diagnostics for every image provider: text is
+            # always prepared locally. Rejected prompt drafts are never stored.
+            failure_evidence = prompt_failure_receipts(getattr(service.ollama, 'last_prompt_evidence', []))
+            failure_evidence.append({'phase': 'validation', 'error_type': type(exc).__name__,
+                                     'error_sha256': hashlib.sha256(str(exc).encode()).hexdigest()})
             def failed(t):
                 if service.one_click.current():
                     try:
@@ -1030,6 +1112,12 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
                 t['approval'] = None
                 t['status'] = 'plan_ready'
                 t['error'] = str(exc.detail) if isinstance(exc, HTTPException) else str(exc)
+                if isinstance(exc, ModelError) and service.one_click.current():
+                    t['_prompt_preparation_failure'] = {
+                        'kind': 'model_validation', 'run_id': service.one_click.current()[1],
+                        'plan_hash': digest(t['plan'])}
+                else:
+                    t.pop('_prompt_preparation_failure', None)
                 if failure_evidence:
                     t['prompt_failure_evidence'] = failure_evidence
             service.update(task_id, failed)
@@ -1118,9 +1206,14 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
     @app.post('/api/tasks/{task_id}/cancel')
     def cancel(task_id: str, body: dict):
         service.one_click.signal_cancel(task_id)
+        service.builtin_agent.signal_cancel(task_id)
         def change(t):
             service.one_click.cancel_marker(t)
             t['cancel_requested'] = True
+            for asset in t.get('assets', []):
+                review = asset.get('_builtin_visual_review') or {}
+                if review.get('status') in ('queued', 'running'):
+                    review['status'] = 'interrupted'
             for job in t['jobs']:
                 if job['kind'] == 'generation':
                     for item in job.get('submissions', []):

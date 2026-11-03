@@ -147,7 +147,10 @@ def test_restart_after_recorded_export_finishes_without_second_export_or_model(h
         reloaded.headers['X-Local-Token'] = reloaded.get('/api/bootstrap').json()['token']
         final = terminal(reloaded, task['id'])
         assert final['automation']['status'] == 'completed' and final['status'] == 'exported'
-        assert final['exports'] == before['exports'] and len(final['jobs']) == len(before['jobs'])
+        # The newly bound agent profile is private in every nested snapshot.
+        # Compare the same public surface while retaining byte/job/call checks.
+        from backend.app.privacy import public_task
+        assert final['exports'] == public_task(before)['exports'] and len(final['jobs']) == len(before['jobs'])
         assert hashlib.sha256(path.read_bytes()).hexdigest() == original_hash
         assert replacement_text.calls == replacement_text.prompt_calls == replacement_comfy.calls == 0
         assert text.calls == text.prompt_calls == comfy.calls == 1

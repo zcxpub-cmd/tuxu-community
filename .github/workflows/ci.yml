@@ -43,6 +43,7 @@ jobs:
           npm run test:native-image
           npm run test:theme
           npm run test:one-click
+          npm run test:builtin-agent
       - name: Backend checks (mocked models only)
         run: python -m pytest -q backend/tests
       - name: Publication file check

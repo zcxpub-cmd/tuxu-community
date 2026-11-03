@@ -31,7 +31,10 @@ try {
   for (const provider of ['local', 'ark', 'openai']) assert.equal(renderConfirmation(provider), '', 'The native tool explanation applies only to the Codex provider')
 
   const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
-  assert.match(app, /className="asset-method">[^\n]*?<\/p><NativeImageSizeNotice notice=\{asset\.native_size_notice\} \/><div className="asset-actions">/, 'The asset notice follows processing information and precedes actions')
+  const methodIndex = app.indexOf('className="asset-method"')
+  const noticeIndex = app.indexOf('<NativeImageSizeNotice notice={asset.native_size_notice} />')
+  const actionsIndex = app.indexOf('className="asset-actions"')
+  assert.ok(methodIndex >= 0 && noticeIndex > methodIndex && actionsIndex > noticeIndex, 'The asset notice follows processing information and precedes actions; review guidance may appear between the notice and actions')
   assert.match(app, /<NativeImageConfirmation provider=\{provider\} \/>/, 'The confirmation area supplies the selected provider')
   assert.match(app, /原图 \{asset\.width\} × \{asset\.height\}/, 'Image selection continues to show actual asset dimensions')
   assert.equal(requests, 0, 'Neither explanation starts a request')

@@ -11,7 +11,7 @@ export default function ThemeSwitcher({ preference, resolvedTheme, setPreference
   const name = `workspace-theme-${useId()}`
   return <fieldset className="theme-switcher" disabled={disabled} data-resolved-theme={resolvedTheme}>
     <legend>工作台外观</legend>
-    <div className="theme-options">{choices.map(choice => <label key={choice.value} className="theme-choice">
+    <div className="theme-options">{choices.map(choice => <label key={choice.value} className="theme-choice" title={choice.value === 'system' ? '按电脑本地时间：07:00–19:00 日间，其余时间夜间' : undefined}>
       <input type="radio" name={name} value={choice.value} checked={preference === choice.value} onChange={event => { if (event.target.checked) setPreference(choice.value) }} />
       <span>{choice.label}</span>
     </label>)}</div>

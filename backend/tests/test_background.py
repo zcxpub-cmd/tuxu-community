@@ -155,11 +155,16 @@ def test_actual_background_http_request_has_only_source_and_exact_slot_schema(mo
     {'slot_id': 's', 'text': 'White ground without props.'},
     {'slot_id': 's', 'text': 'White ground. No text.'},
 ])
-def test_invalid_background_never_uses_shared_draft_or_retries(response):
+def test_invalid_background_never_uses_shared_draft_and_only_cjk_has_one_local_correction(response):
     adapter = RecordingAdapter(response)
     with pytest.raises(ModelError):
         adapter.prompts([slot()], 'PRIVATE_STYLE', 'fake-text')
-    assert len(adapter.calls) == 2 and [e['phase'] for e in adapter.last_prompt_evidence] == ['scene', 'background']
+    cjk = response.get('text') == '中文背景'
+    assert len(adapter.calls) == (3 if cjk else 2)
+    assert [e['phase'] for e in adapter.last_prompt_evidence] == ['scene', 'background'] + (['background_repair'] if cjk else [])
+    if cjk:
+        assert adapter.calls[1] == adapter.calls[2]
+        assert adapter.last_prompt_evidence[-1]['repair_reason'] == 'english'
     assert adapter.last_prompt_evidence[-1]['result_valid'] is False
     assert PRIVATE_BACKGROUND not in json.dumps(adapter.last_prompt_evidence)
 
@@ -198,9 +203,14 @@ def test_background_approval_failure_is_unapproved_zero_comfy_and_body_free(harn
     assert result.status_code == 422 and comfy.calls == 0 and internal['approval'] is None and internal['prompts'] == {}
     assert internal['status'] == 'plan_ready' and internal['_prompting'] is False
     expected = 1 if failure == 'scene' else 2
-    assert len(adapter.calls) == len(internal['prompt_failure_evidence']) == expected
-    assert internal['prompt_failure_evidence'][-1]['result_valid'] is False
-    assert all(set(item) <= {'phase', 'request_state', 'result_valid', 'input_sha256', 'error_type'} for item in internal['prompt_failure_evidence'])
+    receipts = internal['prompt_failure_evidence']
+    model_receipts = [item for item in receipts if item['phase'] != 'validation']
+    assert len(adapter.calls) == len(model_receipts) == expected
+    assert model_receipts[-1]['result_valid'] is False
+    assert receipts[-1]['phase'] == 'validation' and len(receipts[-1]['error_sha256']) == 64
+    assert all(set(item) <= {'phase', 'request_state', 'result_valid', 'input_sha256', 'error_type',
+                             'field_checks', 'done', 'done_reason', 'prompt_eval_count', 'eval_count',
+                             'total_duration', 'error_sha256'} for item in receipts)
     assert PRIVATE_BACKGROUND not in json.dumps(internal)
     for url in (f'/api/tasks/{task["id"]}', '/api/tasks', '/api/bootstrap'):
         public = client.get(url).text

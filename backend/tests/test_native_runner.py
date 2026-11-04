@@ -61,8 +61,8 @@ def test_native_probe_rejects_ineffective_image_namespace_config(native, monkeyp
         def send(self, value): pass
         def close(self): pass
         def call(self, method, params):
-            assert method in ('initialize', 'account/read', 'config/read')
-            if method == 'account/read': return {'account': {'type': 'chatgpt'}}
+            assert method in ('initialize', 'config/read')
+
             if method == 'config/read': return {'config': {'features': {
                 **{name: False for name in native.DISABLED_FEATURES}, 'code_mode': mode}}}
             return {}
@@ -266,21 +266,28 @@ def test_view_image_function_is_not_native_image_generation(native, monkeypatch,
         native.generate(Path('/fixed/codex'), frozen, tmp_path)
 
 
-def test_native_mode_rejects_api_key_account_without_starting_model(native, monkeypatch, tmp_path):
-    class Rpc:
-        closed = False
-        def __init__(self, *args):
-            pass
-        def call(self, method, params):
-            assert method in ('initialize', 'account/read')
-            return {'account': {'type': 'apiKey'}}
-        def send(self, value):
-            pass
-        def close(self):
-            self.closed = True
-    monkeypatch.setattr(native, 'Rpc', Rpc)
-    with pytest.raises(native.RunnerError, match='chatgpt_login_required'):
-        native.prepare_rpc(Path('/fixed/codex'), tmp_path)
+@pytest.mark.parametrize('returncode,stdout,stderr,allowed', [
+    (0, '', 'Logged in using ChatGPT\n', True),
+    (0, 'Logged in using ChatGPT\n', '', True),
+    (1, '', 'Logged in using ChatGPT\n', False),
+    (0, '', 'Logged in using an API key\n', False),
+    (0, '', 'Logged in using ChatGPT access token\n', False),
+])
+def test_native_login_probe_only_accepts_existing_chatgpt_mode(
+    native, monkeypatch, tmp_path, returncode, stdout, stderr, allowed
+):
+    monkeypatch.setenv('OPENAI_API_KEY', 'api-key-must-not-be-inherited')
+    def login(argv, **options):
+        assert argv == ['/fixed/codex', '-c', 'model_provider="openai"', 'login', 'status']
+        assert options['cwd'] == tmp_path and options['shell'] is False
+        assert 'OPENAI_API_KEY' not in options['env']
+        return SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
+    monkeypatch.setattr(native.subprocess, 'run', login)
+    if allowed:
+        native.verify_chatgpt_login(Path('/fixed/codex'), tmp_path)
+    else:
+        with pytest.raises(native.RunnerError, match='chatgpt_login_required'):
+            native.verify_chatgpt_login(Path('/fixed/codex'), tmp_path)
 
 
 def test_mcp_names_are_disabled_and_verified_before_any_thread(native, monkeypatch, tmp_path):
@@ -290,9 +297,7 @@ def test_mcp_names_are_disabled_and_verified_before_any_thread(native, monkeypat
             self.names, self.closed = names, False
             instances.append(self)
         def call(self, method, params):
-            assert method in ('initialize', 'account/read', 'config/read')
-            if method == 'account/read':
-                return {'account': {'type': 'chatgpt'}}
+            assert method in ('initialize', 'config/read')
             if method == 'config/read':
                 return {'config': {'features': {**{name: False for name in native.DISABLED_FEATURES},
                                    'code_mode': {'enabled': False, 'direct_only_tool_namespaces': ['image_gen']}},
@@ -302,9 +307,14 @@ def test_mcp_names_are_disabled_and_verified_before_any_thread(native, monkeypat
             pass
         def close(self):
             self.closed = True
+    checks = []
+    def login(binary, cwd):
+        assert len(instances) == 2 and instances[0].closed
+        checks.append((binary, cwd))
     monkeypatch.setattr(native, 'Rpc', Rpc)
+    monkeypatch.setattr(native, 'verify_chatgpt_login', login)
     rpc = native.prepare_rpc(Path('/fixed/codex'), tmp_path)
-    assert len(instances) == 2 and instances[0].closed
+    assert checks == [(Path('/fixed/codex'), tmp_path)]
     assert rpc.names == ('private-server',)
 
 

@@ -18,6 +18,7 @@ from backend.tests.test_service import docs_double, ready
 @pytest.mark.parametrize('requested,actual', [
     ('1536x1024', (1672, 941)), ('landscape', (1280, 960)),
     ('1024x1536', (941, 1672)), ('portrait', (960, 1280)),
+    ('1536x1024', (1755, 896)), ('1024x1536', (896, 1755)),
 ])
 def test_only_native_common_canvas_variants(requested, actual):
     assert fits_requested_canvas(requested, *actual, native=True)
@@ -28,6 +29,7 @@ def test_only_native_common_canvas_variants(requested, actual):
     ('1536x1024', (941, 1672)), ('1024x1536', (1672, 941)),
     ('1024x1024', (1672, 941)), ('1536x1024', (1024, 1024)),
     ('1536x1024', (4000, 500)), ('1024x1536', (500, 4000)),
+    ('1536x1024', (2110, 1000)), ('1024x1536', (470, 1000)),
     ('2000x1000', (1672, 941)), ('invalid', (1672, 941)),
     (None, (1672, 941)), ('1536x1024', (0, 941)),
 ])
@@ -79,7 +81,9 @@ def prepare(h, tmp_path, shape='landscape', sizes=((1672, 941),), mode='codex-na
     return task, job, payload, originals, calls
 
 
-@pytest.mark.parametrize('shape,size', [('landscape', (1672, 941)), ('portrait', (941, 1672))])
+@pytest.mark.parametrize('shape,size', [
+    ('landscape', (1672, 941)), ('portrait', (941, 1672)), ('landscape', (1755, 896)),
+])
 def test_completed_native_receipt_recovers_original_pixels_without_new_submission(harness, tmp_path, shape, size):
     task, job, payload, originals, calls = prepare(harness, tmp_path, shape, (size, size))
     service = harness[1];before = copy.deepcopy(service.require(task['id'])['approval'])

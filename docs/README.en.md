@@ -1,10 +1,10 @@
-# Tuxu Community v0.7.0
+# Tuxu Community v0.7.1
 
 Tuxu is a local-first article illustration workbench. Import DOCX, Markdown or TXT, review illustration suggestions, adjust simple visual direction, approve generation, select an image and export a new document.
 
 The UI offers style and brightness choices, optional backgrounds and rough object placement. Export formats are DOCX, a Markdown image bundle and HTML. Image cleanup uses a median filter and Lanczos resizing, not AI super-resolution.
 
-Version 0.7 adds a built-in visual director with roles for article analysis, prompt writing, and optional local image review. Automatic review is off by default and applies to newly authorized work when enabled. The workspace follows the computer’s local clock in system mode, using light appearance from 07:00 until 19:00 and dark appearance at other times. This version also improves one-click preparation and file import. [Release notes](release-v0.7.0.md)
+Version 0.7 adds a built-in visual director with roles for article analysis, prompt writing, and optional local image review. Automatic review is off by default and applies to newly authorized work when enabled. The workspace follows the computer’s local clock in system mode, using light appearance from 07:00 until 19:00 and dark appearance at other times. This version also improves one-click preparation and file import. [Release notes](release-v0.7.1.md)
 
 The homepage keeps all eighteen animated scenes. The app picks a scene when you open or return to the homepage and avoids repeats on consecutive visits. The ten clips introduced in 0.6 fade through their first frame when replaying. The homepage uses a still image when motion is disabled. [Scene gallery](cinematic-ui.md)
 

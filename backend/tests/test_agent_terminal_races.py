@@ -3,12 +3,48 @@ import copy
 import hashlib
 import io
 
+import pytest
 from PIL import Image
 
 from backend.app.local_agent import LocalAgentBridge
+from backend.app.main import create_app
 from backend.tests.test_cloud_service import harness
 from backend.tests.test_image_geometry import prepare
 from backend.tests.test_service import docs_double
+
+
+@pytest.mark.parametrize('recovery', ['restart', 'duplicate_result'])
+def test_saved_result_settles_after_interrupted_finalization(harness, tmp_path, monkeypatch, recovery):
+    task, job, _payload, originals, calls = prepare(harness, tmp_path)
+    client, service, text, comfy = harness
+    with monkeypatch.context() as interrupted:
+        interrupted.setattr(service, 'finish_agent_if_settled', lambda *_: None)
+        LocalAgentBridge(service).pump()
+    before = service.require(task['id'])
+    assert before['jobs'][-1]['status'] == 'awaiting_agent'
+    assert before['jobs'][-1]['submissions'][0]['state'] == 'saved'
+    assert len(before['assets']) == 1
+
+    if recovery == 'restart':
+        create_app(tmp_path, text, comfy).state.service.recover()
+    else:
+        image = io.BytesIO()
+        originals[0].save(image, 'PNG')
+        asset = before['assets'][0]
+        response = client.post('/api/tasks/' + task['id'] + '/agent-image-result', data={
+            'job_id': job['id'], 'slot_id': asset['slot_id'], 'approval_id': job['approval_id']},
+            files={'image': ('retry.png', image.getvalue(), 'image/png')})
+        assert response.status_code == 200
+
+    after = service.require(task['id'])
+    assert after['jobs'][-1]['status'] == 'completed'
+    assert after['status'] == 'review'
+    assert after['assets'] == before['assets']
+    assert after['approval'] == before['approval']
+    asset = after['assets'][0]
+    assert client.post('/api/tasks/' + task['id'] + '/select', json={
+        'selections': {asset['slot_id']: {'asset_id': asset['id'], 'use_processed': False}}}).status_code == 200
+    assert not calls.exists()
 
 
 def test_known_rejection_wins_over_late_success_after_entry_validation(harness, tmp_path, monkeypatch):

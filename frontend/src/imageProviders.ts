@@ -1,4 +1,4 @@
-import type { Approval, CloudCatalog, CloudQuality, ImageProvider, Task } from './types'
+import type { Approval, CloudCatalog, CloudQuality, ComfyStatus, ImageProvider, Task } from './types'
 
 export function approvedProvider(approval?: Approval | null): ImageProvider {
   return approval?.image_target?.id || approval?.image_provider || 'local'
@@ -15,6 +15,11 @@ export function targetModel(provider: ImageProvider, checkpoint: string, catalog
 
 export function targetReady(provider: ImageProvider, localReady: boolean, catalog?: CloudCatalog): boolean {
   return provider === 'local' ? localReady : provider === 'codex' ? !!catalog?.built_in.ready : !!catalog?.profiles.find(profile => profile.id === provider)?.ready
+}
+
+/** New approvals use masks; saved area approvals still use their original node set. */
+export function regionControlFor(comfy?: ComfyStatus, savedApproval?: Approval | null) {
+  return savedApproval && savedApproval.local_region_mode !== 'mask' ? comfy?.region_control : comfy?.mask_control
 }
 
 /** Freeze provider/model/configuration/quality together; old approvals remain local. */

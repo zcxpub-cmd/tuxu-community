@@ -20,6 +20,7 @@ from pathlib import Path
 
 from PIL import Image
 from .cloud import PUBLIC_CLOUD_MESSAGES
+from .director import MASKED_REGIONS_MODE
 from .one_click import MESSAGES as AUTOMATION_MESSAGES, STAGES as AUTOMATION_STAGES, STATUSES as AUTOMATION_STATUSES
 from .builtin_agent import public_review
 
@@ -33,6 +34,7 @@ _PUBLIC_ERROR_MESSAGES = PUBLIC_CLOUD_MESSAGES | frozenset(AUTOMATION_MESSAGES.v
     '画面描述转换未完成，请重试或调整简单描述。',
     '全文阅读覆盖检查未通过，请重新分析。',
     '模型请求等待超时，请恢复原作业核查。',
+    '暂时无法读取 ComfyUI 结果；已保留原请求，恢复时不会重复提交。',
     '执行未完成，请检查本地服务记录。',
     '云端模型配置已改变，请重新确认并授权。',
     '云端模型明确拒绝生图请求，请检查配置或调整方案后重新授权。',
@@ -125,7 +127,15 @@ def public_task(task):
     }
     result['error'] = public_error(result.get('error'))
     if result.get('approval'):
-        result['approval'].pop('prompt_evidence', None)
+        approval = result['approval']
+        approval.pop('prompt_evidence', None)
+        approval.pop('local_region_mode', None)
+        if not approval.get('image_target') and approval.get('image_provider', 'local') == 'local':
+            regional_prompts = [prompt for prompt in (task.get('prompts') or {}).values() if prompt.get('regions')]
+            if regional_prompts:
+                approval['local_region_mode'] = ('mask' if any(
+                    prompt.get('conditioning_mode') == MASKED_REGIONS_MODE for prompt in regional_prompts
+                ) else 'area')
     for job in result.get('jobs', []):
         job.pop('automation_id', None)
         job.pop('prompts', None)

@@ -695,7 +695,9 @@ class CloudImageAdapter:
             headers['Authorization'] = 'Bearer ' + key
             body = {'model': target['model'], 'prompt': text, 'size': target['size']}
             if target['provider'] == 'ark':
-                body.update(response_format='b64_json', watermark=False, stream=False, sequential_image_generation='disabled')
+                # Single image and non-streaming are the defaults. Pro and
+                # Flash do not accept the optional group-generation parameter.
+                body.update(response_format='b64_json', watermark=False)
             else:
                 body.update(n=1, quality=target['quality'], output_format='png')
             record = {'request_id': request_id, 'status': 'intent', 'post_count': 1,

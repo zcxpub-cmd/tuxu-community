@@ -24,15 +24,15 @@ def fits_requested_canvas(size, width, height, *, native=False):
     if abs(actual / expected - 1) <= .05:
         return True
     # The built-in Codex tool has no enforced pixel-size parameter. Its ordinary
-    # 4:3 / 3:2 / 16:9 canvases fulfil the UI's horizontal/vertical choice. Do not
-    # extend this exception to arbitrary runners, opposite orientation, squares,
-    # panoramas, or nonstandard explicit requested ratios.
+    # 4:3 / 3:2 / 16:9 / 2:1 canvases fulfil the UI's horizontal/vertical choice.
+    # Do not extend this exception to arbitrary runners, opposite orientation,
+    # squares, extreme panoramas, or nonstandard explicit requested ratios.
     if not native:
         return False
     if abs(expected - 1.5) < 1e-9:
-        return any(abs(actual / ratio - 1) <= .05 for ratio in (4 / 3, 1.5, 16 / 9))
+        return any(abs(actual / ratio - 1) <= .05 for ratio in (4 / 3, 1.5, 16 / 9, 2.0))
     if abs(expected - 2 / 3) < 1e-9:
-        return any(abs(actual / ratio - 1) <= .05 for ratio in (3 / 4, 2 / 3, 9 / 16))
+        return any(abs(actual / ratio - 1) <= .05 for ratio in (3 / 4, 2 / 3, 9 / 16, .5))
     return False
 
 

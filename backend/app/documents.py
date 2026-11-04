@@ -20,6 +20,7 @@ import zipfile
 
 from docx import Document as WordDocument
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.exceptions import InvalidXmlError
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt
@@ -242,9 +243,15 @@ def _existing_images(block: Any, doc: Any) -> list[dict]:
 
 def _parse_docx(data: bytes, filename: str) -> dict:
     _validate_docx(data)
-    doc = WordDocument(io.BytesIO(data))
+    try:
+        doc = WordDocument(io.BytesIO(data))
+        body = doc.element.body
+    except (AttributeError, InvalidXmlError, KeyError, ValueError, etree.XMLSyntaxError, zipfile.BadZipFile) as exc:
+        raise ValueError("DOCX 文件损坏或无法读取") from exc
+    if body is None:
+        raise ValueError("DOCX 文件损坏或无法读取")
     paragraphs = []
-    for source_index, block in enumerate(doc.element.body):
+    for source_index, block in enumerate(body):
         if block.tag == qn("w:p"):
             para = Paragraph(block, doc)
             text = para.text
@@ -263,7 +270,7 @@ def _parse_docx(data: bytes, filename: str) -> dict:
     return _finish(paragraphs, title="", format="docx", source_hash=_hash(data), source_filename=filename)
 
 
-def parse_document(path: Path) -> dict:
+def parse_document(path: Path, *, source_filename: str | None = None) -> dict:
     path = Path(path)
     if not path.is_file():
         raise ValueError("源文件不存在")
@@ -273,13 +280,14 @@ def parse_document(path: Path) -> dict:
     if suffix not in {".docx", ".md", ".txt"}:
         raise ValueError("首版仅支持 DOCX、Markdown 和 TXT")
     data = path.read_bytes()
+    filename = source_filename or path.name
     if suffix == ".docx":
-        return _parse_docx(data, path.name)
+        return _parse_docx(data, filename)
     try:
         text = data.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise ValueError("文本文件必须是 UTF-8 编码") from exc
-    return _parse_text_content(text, "", suffix[1:], _hash(data), path.name)
+    return _parse_text_content(text, "", suffix[1:], _hash(data), filename)
 
 
 def _image_info(data: bytes) -> tuple[str, int, int]:
@@ -371,7 +379,7 @@ def _section_picture_bounds(doc: Any) -> list[tuple[int, int]]:
     properties = ("page_width", "page_height", "left_margin", "right_margin", "top_margin", "bottom_margin")
     dimensions = {name: getattr(defaults, name) for name in properties}
     result = []
-    for section in doc.sections:
+    for section in doc.sections or [defaults]:
         for name in properties:
             value = getattr(section, name)
             if value is not None:

@@ -9,14 +9,13 @@ interface Props {
   style: string
   locked: boolean
   regionReady: boolean
-  regionError?: string
   onSelect: (id: string) => void
   onChange: (id: string, config: Director) => void
   onApply: (config: Director) => void
 }
 type Drag = { object: DirectorObject; mode: 'move' | 'resize'; pointerId: number; clientX: number; clientY: number; canvasWidth: number; canvasHeight: number }
 
-export default function DirectorPanel({ slots, selectedSlot, style, locked, regionReady, regionError, onSelect, onChange, onApply }: Props) {
+export default function DirectorPanel({ slots, selectedSlot, style, locked, regionReady, onSelect, onChange, onApply }: Props) {
   const slot = slots.find(item => item.id === selectedSlot) || slots[0]
   const config = directorFor(slot)
   const recommendation = styleRecommendationFor(slot)

@@ -215,6 +215,26 @@ def test_public_projection_drops_all_private_prompt_surfaces_without_mutation():
     assert json.dumps(task, sort_keys=True) == before
 
 
+@pytest.mark.parametrize(('mode', 'provider', 'expected'), [
+    ('masked_regions_v1', 'local', 'mask'),
+    (None, 'local', 'area'),
+    ('masked_regions_v1', 'codex', None),
+])
+def test_public_projection_exposes_only_the_saved_local_region_capability(mode, provider, expected):
+    prompt = {'text': SECRET, 'regions': [{'object_id': 'tree', 'text': SECRET}]}
+    if mode is not None:
+        prompt['conditioning_mode'] = mode
+    task = {'id': 'task', 'prompts': {'s': prompt}, 'approval': {'id': 'approval', 'local_region_mode': SECRET}}
+    if provider != 'local':
+        task['approval']['image_target'] = {'id': provider}
+    before = json.dumps(task)
+    visible = public_task(task)
+    assert visible['approval'].get('local_region_mode') == expected
+    assert SECRET not in json.dumps(visible)
+    assert 'conditioning_mode' not in json.dumps(visible)
+    assert json.dumps(task) == before
+
+
 def test_global_text_is_stripped_recursively_from_all_nested_snapshot_surfaces():
     task = {'id': 'task', 'global_text': SECRET,
             'plan': {'slots': [{'id': 's', 'description': '简单描述', 'global_text': SECRET,

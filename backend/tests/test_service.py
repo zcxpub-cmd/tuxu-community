@@ -104,8 +104,10 @@ def docs_double(monkeypatch):
                 'paragraphs': [{'id': 'p' + str(i), 'text': p, 'kind': 'paragraph', 'level': 0, 'source_index': i}
                                for i, p in enumerate(text.split('\n\n')) if p.strip()],
                 'warnings': [], 'character_count': len(text), 'source_filename': 'pasted.txt'}
-    def parse_document(path):
-        return parse_text(path.read_text(), path.stem)
+    def parse_document(path, *, source_filename=None):
+        document = parse_text(path.read_text(), Path(source_filename or path.name).stem)
+        document['source_filename'] = source_filename or path.name
+        return document
     def export_document(source_path, document, plan, selections, output_dir, format):
         output_dir.mkdir(parents=True, exist_ok=True)
         suffix = {'docx': '.docx', 'markdown': '.zip', 'html': '.html'}[format]
@@ -734,6 +736,22 @@ def test_process_select_and_export_are_version_bound(harness):
     assert client.get(f'/api/exports/{task["id"]}/missing.html').status_code == 404
 
 
+def test_original_export_key_survives_processing_same_image(harness):
+    client = harness[0]
+    task, _, _ = generated(harness)
+    task_url = f'/api/tasks/{task["id"]}'
+    asset = task['assets'][0]
+    selection = {asset['slot_id']: {'asset_id': asset['id'], 'use_processed': False}}
+    assert client.post(task_url + '/select', json={'selections': selection}).status_code == 200
+    payload = {'format': 'docx', 'confirm_insert': True, 'idempotency_key': 'original-docx'}
+    before = client.post(task_url + '/export', json=payload)
+    assert before.status_code == 200, before.text
+    assert client.post(task_url + '/process', json={'asset_id': asset['id'], 'upscale': 2}).status_code == 200
+    after = client.post(task_url + '/export', json=payload)
+    assert after.status_code == 200, after.text
+    assert after.json()['url'] == before.json()['url']
+
+
 def test_import_limit_format_and_original_hash_guard(harness):
     client, service, _, _ = harness
     assert client.post('/api/tasks/import', files={'file': ('bad.pdf', b'PDF')}).status_code == 400
@@ -742,6 +760,7 @@ def test_import_limit_format_and_original_hash_guard(harness):
     assert response.status_code == 200, response.text
     task = response.json()
     assert task['document']['source_filename'] == 'original.txt'
+    assert task['title'] == task['document']['title'] == 'original'
     source = Path(service.require(task['id'])['source_path'])
     assert hashlib.sha256(source.read_bytes()).hexdigest() == task['document']['source_hash']
 

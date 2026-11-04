@@ -617,3 +617,34 @@ def test_local_workflow_failure_is_known_unsubmitted_but_transport_timeout_remai
     with pytest.raises(httpx.ReadTimeout):
         adapter.submit('test-checkpoint', 'Scene.', 'text', 1, 'square', 'test-key')
     assert len(requests) == 1
+
+
+@pytest.mark.parametrize('history_failures', [1, 3])
+def test_comfy_history_temporarily_unavailable_never_resubmits(monkeypatch, tmp_path, history_failures):
+    import httpx
+    from backend.app.models import ModelError
+
+    history_calls = []
+    actual_client = httpx.Client
+    def respond(request):
+        assert request.method == 'GET'
+        if request.url.path == '/history/accepted':
+            history_calls.append(request)
+            if len(history_calls) <= history_failures:
+                raise httpx.ReadTimeout('busy', request=request)
+            return httpx.Response(200, json={'accepted': {'outputs': {'save': {'images': [
+                {'filename': 'existing.png', 'type': 'output'}]}}}})
+        assert request.url.path == '/view'
+        return httpx.Response(200, content=b'synthetic image response')
+
+    transport = httpx.MockTransport(respond)
+    monkeypatch.setattr(httpx, 'Client', lambda **kwargs: actual_client(transport=transport, **kwargs))
+    destination = tmp_path / 'result.png'
+    adapter = ComfyAdapter(poll_seconds=0, result_timeout=1)
+    if history_failures == 3:
+        with pytest.raises(ModelError, match='已保留原请求'):
+            adapter.result('accepted', destination)
+        assert not destination.exists()
+    else:
+        assert adapter.result('accepted', destination).read_bytes() == b'synthetic image response'
+    assert len(history_calls) == min(history_failures + 1, 3)

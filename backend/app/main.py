@@ -117,6 +117,11 @@ def unresolved(task):
     return any(s.get('state') in ('submitting', 'submitted', 'awaiting_agent') for j in task['jobs'] for s in j.get('submissions', []))
 
 
+def agent_submissions_settled(job):
+    submissions = job.get('submissions', [])
+    return bool(submissions) and all(s['state'] in ('saved', 'failed', 'not_started') for s in submissions)
+
+
 def invalidate(task, clear_prompts=False):
     task['approval'] = None
     task.pop('_prompt_preparation_failure', None)
@@ -363,6 +368,8 @@ class Service:
             for job in task['jobs']:
                 if job['status'] in ('queued', 'running'):
                     self.schedule(task['id'], job['id'])
+                elif job['status'] == 'awaiting_agent' and agent_submissions_settled(job):
+                    self.finish_agent_if_settled(task['id'], job['id'], job['approval_id'])
 
     def run_job(self, task_id, job_id):
         try:
@@ -606,6 +613,9 @@ class Service:
             if not item:
                 bad('图片图位不属于此作业。', 409)
             if item['state'] == 'saved':
+                if j['status'] == 'awaiting_agent' and agent_submissions_settled(j):
+                    self.finish_agent_if_settled(task_id, job_id, approval_id)
+                    return self.require(task_id)
                 return t
             if item['state'] != 'submitted' or j['status'] != 'awaiting_agent':
                 bad('此协作请求尚未被接收或已被取消。', 409)
@@ -641,11 +651,10 @@ class Service:
             if (not j or j['status'] != 'awaiting_agent' or j.get('approval_id') != approval_id
                     or not matches(t, j.get('snapshot', {}))):
                 return
-            submissions = j.get('submissions', [])
-            if not submissions or not all(s['state'] in ('saved', 'failed', 'not_started') for s in submissions):
+            if not agent_submissions_settled(j):
                 return
             cancelled = t.get('cancel_requested')
-            rejected = any(s['state'] != 'saved' for s in submissions)
+            rejected = any(s['state'] != 'saved' for s in j['submissions'])
             status = 'cancelled' if cancelled else 'failed' if rejected else 'completed'
             message = ('已取消后续协作；已返回图片保留。' if cancelled else
                        AGENT_REJECTED if rejected else '本机智能体图片已保存。')
@@ -812,7 +821,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         service.local_agent.stop()
         service.executor.shutdown(wait=False, cancel_futures=True)
 
-    app = FastAPI(title='图序社区版 · Tuxu Community', version='0.7.0', lifespan=lifespan)
+    app = FastAPI(title='图序社区版 · Tuxu Community', version='0.7.1', lifespan=lifespan)
     app.state.service = service
 
     @app.exception_handler(RequestValidationError)
@@ -857,7 +866,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         preferred = next((p['id'] for p in cloud['profiles'] if p.get('ready') and
                           p.get('verification', {}).get('generation') == 'succeeded' and
                           p.get('verification', {}).get('connection') != 'failed'), 'local')
-        return {'application': {'id': 'tuxu-community', 'version': '0.7.0'},
+        return {'application': {'id': 'tuxu-community', 'version': '0.7.1'},
                 'token': service.store.token, 'genres': GENRES, 'tasks': [public(t) for t in service.store.list()],
                 'models': {'ollama': text, 'comfy': image, 'cloud': cloud, 'local_agent': service.local_agent.status(),
                            'builtin_agent': builtin}, 'defaults': {'text_model': builtin['model'],
@@ -943,19 +952,16 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         temp.parent.mkdir(parents=True, exist_ok=True)
         temp.write_bytes(data)
         try:
-            document = parse_document(temp)
-            document['source_filename'] = Path(file.filename or '').name
+            document = parse_document(temp, source_filename=Path(file.filename or '').name)
             task = service.new_task(document, genre, style, title, temp)
             target = service.directory(task['id']) / ('source' + extension)
             temp.replace(target)
             task, _ = service.update(task['id'], lambda t: t.update(source_path=str(target)))
             return public(task)
         except (ValueError, RuntimeError) as exc:
-            temp.unlink(missing_ok=True)
             bad(str(exc))
-        except HTTPException:
+        finally:
             temp.unlink(missing_ok=True)
-            raise
 
     def new_job(task, kind, **extra):
         return {'id': str(uuid.uuid4()), 'kind': kind, 'status': 'queued', 'progress': 0,
@@ -1339,11 +1345,16 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
                 selections = validated_selections(task, task['selections'])
             if not selections and task['plan']['slots']:
                 bad('请至少选择一张有效图片后导出。')
-            fingerprint = digest({'snapshot': snap, 'format': format, 'selections': selections,
-                                  'processed': {a['id']: a.get('processing') for a in task['assets'] if a['id'] in [v['asset_id'] for v in selections.values()]}})
+            selected_ids = {selection['asset_id'] for selection in selections.values()}
+            processed_ids = {selection['asset_id'] for selection in selections.values() if selection['use_processed']}
+            export_scope = {'snapshot': snap, 'format': format, 'selections': selections}
+            processing = {asset['id']: asset.get('processing') for asset in task['assets'] if asset['id'] in selected_ids}
+            fingerprint = digest({**export_scope, 'processed': {
+                asset_id: value for asset_id, value in processing.items() if asset_id in processed_ids}})
+            legacy_fingerprint = digest({**export_scope, 'processed': processing})
             previous = next((e for e in task['exports'] if e.get('idempotency_key') == key), None)
             if previous:
-                if previous['fingerprint'] != fingerprint:
+                if previous['fingerprint'] not in (fingerprint, legacy_fingerprint):
                     bad('此导出幂等键已用于其他选图或版本。', 409)
                 if service.one_click.current():
                     task, _ = service.update(task_id, lambda current: service.one_click.effect(current, 'export', url=previous['url']))

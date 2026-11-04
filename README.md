@@ -1,6 +1,6 @@
-# 图序社区版 v0.7.0
+# 图序社区版 v0.7.1
 
-本版加入内置视觉导演，更新工作台日夜切换，并修复一键生图前的描述准备与文件导入问题。电影式首页保留十八套动态场景。 [下载 v0.7.0](https://github.com/zcxpub-cmd/tuxu-community/releases/tag/v0.7.0) · [本版更新说明](docs/release-v0.7.0.md)
+本版修复生图恢复、供应商错误提示、文档导入导出和图片检查后的导航，并改进 Codex 原生连接探测。 [下载 v0.7.1](https://github.com/zcxpub-cmd/tuxu-community/releases/tag/v0.7.1) · [本版更新说明](docs/release-v0.7.1.md)
 
 把文章变成可审阅的配图方案，再把选中的画面插入文档。
 

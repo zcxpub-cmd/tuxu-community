@@ -182,6 +182,19 @@ def test_target_becoming_unavailable_pauses_without_submit(harness):
     assert 'PRIVATE_TARGET_SENTINEL' not in json.dumps(task)
 
 
+def test_comfy_health_timeout_after_dispatch_does_not_cancel_accepted_request(harness):
+    client, service, _, comfy = harness
+    comfy.block = threading.Event()
+    task = start(client, imported(client))
+    assert comfy.entered.wait(4)
+    comfy.health = lambda: (_ for _ in ()).throw(RuntimeError('busy ComfyUI'))
+    service.one_click.pump()
+    comfy.block.set()
+    final = terminal(client, task['id'])
+    assert final['automation']['status'] == 'completed'
+    assert len(final['assets']) == len(final['exports']) == comfy.calls == 1
+
+
 def test_preflight_and_fresh_only_and_key_conflicts(harness):
     client, service, text, comfy = harness
     task = imported(client)
@@ -323,6 +336,30 @@ def test_api_provider_uses_frozen_target_and_original_asset(harness):
     frozen = service.require(task['id'])['automation']['_consent']['target']['targets']['square']
     assert frozen == task['approval']['image_targets'][task['plan']['slots'][0]['id']]
     assert 'SYNTHETIC_TEST_KEY' not in json.dumps(task)
+
+
+def test_cloud_rejection_after_dispatch_is_not_reported_as_changed_configuration(harness):
+    from backend.app.cloud import _REJECTION_MESSAGES
+    from backend.app.models import RejectedSubmissionError
+    from backend.tests.test_cloud_service import FakeCloud
+
+    client, service, _, _ = harness
+    service.cloud = FakeCloud()
+    service.cloud_config.update('ark', {'base_url': 'https://ark.example/v3', 'model': 'synthetic-model',
+                                       'enabled': True, 'api_key': 'SYNTHETIC_TEST_KEY'})
+    error_code = 'InvalidEndpointOrModel.NotFound'
+    def rejected(target, prompt, submission_key):
+        service.cloud.calls += 1
+        epoch = service.cloud_config.capture_verification(target)
+        service.cloud_config.record_generation(target, 'rejected', 404, error_code, verification_epoch=epoch)
+        raise RejectedSubmissionError(_REJECTION_MESSAGES[error_code])
+    service.cloud.submit = rejected
+
+    task = terminal(client, start(client, imported(client), image_provider='ark')['id'])
+    assert task['automation']['status'] == 'failed'
+    assert task['automation']['message'] == MESSAGES['failed']
+    assert task['jobs'][-1]['error'] == _REJECTION_MESSAGES[error_code]
+    assert not task['assets'] and not task['exports'] and service.cloud.calls == 1
 
 
 def test_api_target_revision_drift_stops_before_approval(harness):

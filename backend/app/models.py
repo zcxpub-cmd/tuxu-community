@@ -848,8 +848,19 @@ class ComfyAdapter:
 
     def result(self, request_id, destination: Path):
         start = time.monotonic()
+        read_failures = 0
         while time.monotonic() - start < self.result_timeout:
-            data = self._get('/history/' + request_id)
+            try:
+                data = self._get('/history/' + request_id)
+            except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+                if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code not in (429, 502, 503, 504):
+                    raise
+                read_failures += 1
+                if read_failures >= 3:
+                    raise ModelError('暂时无法读取 ComfyUI 结果；已保留原请求，恢复时不会重复提交。') from None
+                time.sleep(self.poll_seconds)
+                continue
+            read_failures = 0
             record = data.get(request_id)
             if record:
                 status = record.get('status', {})

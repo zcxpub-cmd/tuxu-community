@@ -216,7 +216,8 @@ def test_real_request_shape_single_image_and_restart_cached_result(configured, m
     assert body['prompt'] == PROMPT and body['size'] == target['size']
     assert 'WRONG_LOCAL_BACKGROUND' not in calls[0].content.decode()
     if provider == 'ark':
-        assert body['stream'] is False and body['watermark'] is False and body['sequential_image_generation'] == 'disabled'
+        assert body['watermark'] is False
+        assert 'stream' not in body and 'sequential_image_generation' not in body
         assert body['response_format'] == 'b64_json' and 'n' not in body
     else:
         assert body['n'] == 1 and body['quality'] == 'high' and body['output_format'] == 'png' and 'response_format' not in body

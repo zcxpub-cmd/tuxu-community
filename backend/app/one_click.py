@@ -110,12 +110,13 @@ class OneClick:
         if automation and automation.get('status') in ACTIVE:
             automation.update(status='cancelled', message=MESSAGES['cancelled'])
 
-    def _target(self, body):
+    def _target(self, body, *, check_ready=True):
         provider = body['image_provider']
         if provider == 'local':
-            health = self.service.comfy.health()
-            if not health.get('available') or body['checkpoint'] not in health.get('checkpoints', []):
-                raise HTTPException(409, '本地生图模型尚未就绪。')
+            if check_ready:
+                health = self.service.comfy.health()
+                if not health.get('available') or body['checkpoint'] not in health.get('checkpoints', []):
+                    raise HTTPException(409, '本地生图模型尚未就绪。')
             return {'provider': 'local', 'checkpoint': body['checkpoint'], 'endpoint': getattr(self.service.comfy, 'url', None)}
         result = {'targets': {aspect: self.service.cloud_config.target(provider, aspect, body['cloud_quality'])
                               for aspect in ('landscape', 'square', 'portrait')}}
@@ -124,7 +125,7 @@ class OneClick:
             if not state.get('available') or not state.get('enabled'):
                 raise HTTPException(409, '本机智能体尚未连接或启用。')
             result['agent_revision'] = self.service.local_agent.revision()
-        else:
+        elif check_ready:
             catalog = self.service.cloud_config.list_public()
             profile = next((profile for profile in catalog['profiles'] if profile['id'] == provider), {})
             verification = profile.get('verification') or {}
@@ -135,8 +136,12 @@ class OneClick:
     def _check_scope(self, task):
         automation = task['automation']
         consent = automation['_consent']
+        generation = automation['_actions'].get('generation') or {}
+        # After dispatch the worker follows the accepted request. A busy ComfyUI
+        # may time out on health probes without changing the approved target.
+        check_ready = automation['stage'] in ('analysis', 'approval', 'generation') and generation.get('state') != 'recorded'
         return (base_hash(task) == consent['base_hash'] and
-                self._target(consent['body']) == consent['target'] and
+                self._target(consent['body'], check_ready=check_ready) == consent['target'] and
                 ('builtin_agent' not in consent or
                  self.service.builtin_agent.snapshot(consent['body']['model']) == consent['builtin_agent']))
 

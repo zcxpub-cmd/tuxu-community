@@ -204,6 +204,21 @@ class Rpc:
             self.process.kill()
 
 
+def verify_chatgpt_login(binary, work):
+    # Login status checks the active local credential mode. The app-server
+    # account endpoint may wait for remote account metadata even without refresh.
+    try:
+        result = subprocess.run(
+            [str(binary), '-c', 'model_provider="openai"', 'login', 'status'],
+            env=native_environment(), cwd=work, capture_output=True, text=True,
+            timeout=10, shell=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RunnerError('chatgpt_login_required') from exc
+    if result.returncode != 0 or (result.stdout + result.stderr).strip() != 'Logged in using ChatGPT':
+        raise RunnerError('chatgpt_login_required')
+
+
 def prepare_rpc(binary, work):
     """Inspect only local account type/config; never start a model turn here."""
     names = ()
@@ -213,9 +228,6 @@ def prepare_rpc(binary, work):
             rpc.call('initialize', {'clientInfo': {'name': 'tuxu_native_image_runner', 'version': '0.2.0'},
                                    'capabilities': {'experimentalApi': True}})
             rpc.send({'jsonrpc': '2.0', 'method': 'initialized', 'params': {}})
-            account = rpc.call('account/read', {'refreshToken': False})
-            if (account.get('account') or {}).get('type') != 'chatgpt':
-                raise RunnerError('chatgpt_login_required')
             effective = rpc.call('config/read', {'includeLayers': False}).get('config', {})
             servers = effective.get('mcp_servers') or {}
             flags = effective.get('features', {})
@@ -226,6 +238,7 @@ def prepare_rpc(binary, work):
                     mode.get('direct_only_tool_namespaces') != ['image_gen']):
                 raise RunnerError('native_direct_image_configuration_missing')
             if all(isinstance(value, dict) and value.get('enabled') is False for value in servers.values()):
+                verify_chatgpt_login(binary, work)
                 return rpc
             names = tuple(servers)
         except Exception:

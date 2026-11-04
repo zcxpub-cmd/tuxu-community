@@ -73,6 +73,60 @@ def test_docx_root_indices_and_stable_ids(source_docx):
     assert next(p for p in first["paragraphs"] if "已有图片" in p["text"])["existing_images"]
 
 
+@pytest.mark.parametrize(("suffix", "heading"), [
+    ("txt", False), ("md", False), ("docx", False), ("md", True), ("docx", True),
+])
+def test_import_uses_original_filename_as_fallback_title(tmp_path, suffix, heading):
+    path = tmp_path / f"temporary-name.{suffix}"
+    if suffix == "docx":
+        doc = Document()
+        if heading:
+            doc.add_heading("稿内标题", level=1)
+        doc.add_paragraph("这是正文。")
+        doc.save(path)
+    else:
+        path.write_text(("# 稿内标题\n\n" if heading else "") + "这是正文。", encoding="utf-8")
+
+    original_name = f"春日新闻.{suffix}"
+    parsed = parse_document(path, source_filename=original_name)
+    assert parsed["title"] == ("稿内标题" if heading else "春日新闻")
+    assert parsed["source_filename"] == original_name
+    assert parsed["source_hash"] == digest(path)
+
+
+@pytest.mark.parametrize("manifest", [None, b"<broken", b"<wrong-root/>"])
+def test_docx_invalid_package_manifest_is_rejected(source_docx, tmp_path, manifest):
+    path = tmp_path / "damaged.docx"
+    with zipfile.ZipFile(source_docx) as source, zipfile.ZipFile(path, "w") as target:
+        for name in source.namelist():
+            if name != "[Content_Types].xml":
+                target.writestr(name, source.read(name))
+            elif manifest is not None:
+                target.writestr(name, manifest)
+
+    with pytest.raises(ValueError, match="DOCX 文件损坏或无法读取"):
+        parse_document(path)
+
+
+def test_docx_without_explicit_section_properties_can_export(tmp_path):
+    source = tmp_path / "default-section.docx"
+    doc = Document()
+    doc.add_paragraph("第二段说明三个传感单元。")
+    doc.element.body.remove(doc.sections[0]._sectPr)
+    doc.save(source)
+    original_hash = digest(source)
+    document = parse_document(source)
+    slot, chosen = selection(document, raster(tmp_path / "image.png"))
+
+    target = export_document(source, document, {"slots": [slot]}, [chosen], tmp_path / "out", "docx")
+
+    exported = Document(target)
+    assert exported.paragraphs[0].text == "第二段说明三个传感单元。"
+    assert len(exported.inline_shapes) == 1
+    assert exported.paragraphs[2].text == "图 1 三个传感单元（AI 生成示意图）"
+    assert digest(source) == original_hash
+
+
 def test_docx_preserves_original_and_inserts_at_correct_block(source_docx, tmp_path):
     source_hash = digest(source_docx)
     original = Document(source_docx)

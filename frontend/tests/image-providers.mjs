@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { approvedProvider, approvalRequest, activeJobStates, activeTaskStates, imageScopeChanged, taskImageProvider, targetReady } from '../src/imageProviders.ts'
+import { approvedProvider, approvalRequest, activeJobStates, activeTaskStates, imageScopeChanged, regionControlFor, taskImageProvider, targetReady } from '../src/imageProviders.ts'
 import { taskStage } from '../src/workflow.ts'
 
 const catalog = { profiles: [{ id: 'ark', model: 'doubao-image', ready: true, revision: 'revision-3' }, { id: 'openai', model: 'gpt-image', ready: false, revision: 'revision-5' }], built_in: { id: 'codex', ready: true } }
@@ -9,6 +9,15 @@ assert.equal(approvedProvider(legacy), 'local')
 assert.equal(imageScopeChanged(legacy, 'local', 'old-local', 'high', 2, catalog), false, 'Cloud quality cannot change an old local approval')
 assert.equal(imageScopeChanged(legacy, 'ark', 'old-local', 'medium', 2, catalog), true, 'Switching from local requires fresh approval')
 assert.equal(imageScopeChanged(legacy, 'local', 'new-local', 'medium', 2, catalog), true)
+
+const areaOnly = { region_control: { available: true }, mask_control: { available: false } }
+const maskOnly = { region_control: { available: false }, mask_control: { available: true } }
+assert.equal(regionControlFor(areaOnly)?.available, false, 'New authorizations require the mask nodes')
+assert.equal(regionControlFor(maskOnly)?.available, true)
+assert.equal(regionControlFor(areaOnly, legacy)?.available, true, 'Old area approval stays executable')
+assert.equal(regionControlFor(maskOnly, legacy)?.available, false)
+assert.equal(regionControlFor(maskOnly, { ...legacy, local_region_mode: 'mask' })?.available, true)
+assert.equal(regionControlFor(areaOnly, { ...legacy, local_region_mode: 'mask' })?.available, false)
 
 const cloud = { max_attempts: 2, image_target: { id: 'ark', provider: 'ark', model: 'doubao-image', config_revision: 'revision-3', quality: 'medium' } }
 const changed = (approval = cloud, provider = 'ark', quality = 'medium', attempts = 2, config = catalog) => imageScopeChanged(approval, provider, 'unavailable-local', quality, attempts, config)

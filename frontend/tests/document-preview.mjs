@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { canConfirmExport, figureCaption, selectedFigures } from '../src/documentPreview.ts'
+import { canConfirmExport, exportFigureScope, figureCaption, selectedFigures } from '../src/documentPreview.ts'
 
 const paragraphs = [
   { id: 'first', kind: 'paragraph', text: '第一段', source_index: 0 },
@@ -38,6 +38,14 @@ assert.deepEqual(ids(selectedFigures(staleTask)), ['same-paragraph', 'later'], '
 const processedTask = task([slot('processed', 'first')])
 processedTask.selections.processed.use_processed = true
 assert.equal(selectedFigures(processedTask)[0].asset.processed_url, 'processed-processed.png')
+const firstProcessedScope = exportFigureScope(selectedFigures(processedTask))
+processedTask.assets[0].processed_url = 'processed-processed.png?version=2'
+assert.notEqual(exportFigureScope(selectedFigures(processedTask)), firstProcessedScope, 'A different processed version needs a new export key')
+processedTask.selections.processed.use_processed = false
+const originalScope = exportFigureScope(selectedFigures(processedTask))
+processedTask.assets[0].processed_url = 'processed-processed.png?version=3'
+assert.equal(exportFigureScope(selectedFigures(processedTask)), originalScope, 'Processing does not change an original-image export key')
+processedTask.selections.processed.use_processed = true
 processedTask.assets[0].processed_url = null
 assert.equal(selectedFigures(processedTask).length, 0, 'Missing processed image cannot be previewed as a valid selection')
 assert.equal(figureCaption(3, '图1 科学流程（AI 生成示意图）'), '图 3 科学流程（AI 生成示意图）')

@@ -34,6 +34,13 @@ export function selectedFigures(task: Pick<Task, 'document' | 'plan' | 'selectio
   return rows.map((row, index) => ({ ...row, number: index + 1, caption: figureCaption(index + 1, row.slot.caption) }))
 }
 
+/** Bind a retry to the exact image variant that the document will use. */
+export function exportFigureScope(figures: SelectedFigure[]): string {
+  return JSON.stringify(figures.map(({ slot, asset, selection }) => [
+    slot.id, asset.id, selection.use_processed ? asset.processed_url : null,
+  ]))
+}
+
 /** A saved empty plan can export the original without generation approval. */
 export function canConfirmExport({ plan, selectedCount, approvalId, unsaved, scopeChanged, locked }: {
   plan: Plan | null

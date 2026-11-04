@@ -223,16 +223,19 @@ class OneClick:
             return self.service.update(task_id, update)[0]
 
     def _halt(self, task_id, run_id, status, message):
-        self._event(task_id, run_id).set()
+        event = self._event(task_id, run_id)
         def halt(task):
             automation = task.get('automation') or {}
-            if automation.get('id') != run_id or automation.get('status') not in ACTIVE:
+            # The cancel route signals before it can acquire the store lock.
+            # Leave the terminal status to that route if it already signaled.
+            if event.is_set() or automation.get('id') != run_id or automation.get('status') not in ACTIVE:
                 return False
             automation.update(status=status, message=message)
             task['cancel_requested'] = True
             return True
         _, changed = self.service.update(task_id, halt)
         if changed:
+            event.set()
             self.actions['cancel'](task_id, {})
 
     def _invoke(self, task_id, run_id, stage, body):

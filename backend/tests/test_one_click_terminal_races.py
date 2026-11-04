@@ -94,6 +94,25 @@ def test_cancel_while_export_holds_store_lock_prevents_late_publication(harness,
     client, service, _, comfy = harness
     original = documents.export_document
     cancel_threads, responses, rendered = [], [], []
+    coordinator_handled_signal = threading.Event()
+    signal_cancel = service.one_click.signal_cancel
+    halt = service.one_click._halt
+
+    def signal_before_store(task_id):
+        signal_cancel(task_id)
+        if threading.current_thread() is not service.one_click.thread:
+            assert coordinator_handled_signal.wait(4)
+
+    def observe_halt(*args):
+        try:
+            return halt(*args)
+        finally:
+            coordinator_handled_signal.set()
+
+    # Let the coordinator see the pre-lock cancellation signal before the
+    # HTTP worker can commit the explicit cancellation to the store.
+    monkeypatch.setattr(service.one_click, 'signal_cancel', signal_before_store)
+    monkeypatch.setattr(service.one_click, '_halt', observe_halt)
 
     def render_then_cancel(*args, **kwargs):
         output = original(*args, **kwargs)

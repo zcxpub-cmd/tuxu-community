@@ -98,6 +98,32 @@ def test_real_document_chain_is_bounded_and_idempotent(harness, format):
     assert len(service.require(task['id'])['exports']) == 1
 
 
+def test_english_one_click_freezes_language_and_exports_an_english_caption(harness):
+    client, _, text, _ = harness
+    task = imported(client)
+    original_analyze = text.analyze
+    locales = []
+
+    def analyze(document, genre, style, model, *, locale):
+        locales.append(locale)
+        result = original_analyze(document, genre, style, model)
+        result['slots'][0]['caption'] = 'Leaf in sunlight'
+        return result
+
+    text.analyze = analyze
+    started = start(client, task, locale='en')
+    assert start(client, task, locale='en')['automation']['id'] == started['automation']['id']
+    assert client.post(f'/api/tasks/{task["id"]}/one-click', json=payload(task, locale='zh')).status_code == 409
+    exported = terminal(client, task['id'])
+    assert exported['automation']['status'] == 'completed', exported['automation']
+    assert locales == ['en']
+    response = client.get(exported['automation']['export_url'])
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+        document = archive.read('word/document.xml').decode()
+    assert '树木帮助理解生态。' in document
+    assert 'Figure 1. Leaf in sunlight (AI-generated illustration)' in document
+
+
 def test_zero_image_plan_exports_original_without_approval(harness):
     client, _, text, comfy = harness
     original = text.analyze

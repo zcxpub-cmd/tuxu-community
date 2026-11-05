@@ -111,6 +111,16 @@ body { margin: 0; background: var(--cinema-bg); }
   justify-content: space-between;
   gap: 28px;
 }
+.tuxu-brand-mark { display: block; width: 38px; height: 38px; flex: none; }
+.tuxu-brand-mark::before {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-color: currentColor;
+  mask: url("/tuxu-line-mark.svg") center / contain no-repeat;
+}
+
 .entry-brand {
   display: inline-flex;
   align-items: center;
@@ -659,6 +669,7 @@ body { margin: 0; background: var(--cinema-bg); }
 @media (max-width: 650px) {
   .cinematic-entry { min-height: 100svh; }
   .entry-nav { min-height: 82px; padding: 17px 22px; gap: 16px; }
+  .tuxu-brand-mark { width: 31px; height: 31px; }
   .entry-brand { font-size: 29px !important; gap: 11px; }
   .entry-brand small { font-size: 9px; letter-spacing: .26em; }
   .entry-links { gap: 17px; }
@@ -779,6 +790,7 @@ body { margin: 0; background: var(--cinema-bg); }
 }
 
 @media (max-width: 380px) {
+  .tuxu-brand-mark { width: 28px; height: 28px; }
   .entry-nav { padding: 15px 18px; gap: 10px; flex-wrap: wrap; }
   .entry-brand { font-size: 27px !important; }
   .entry-brand small { font-size: 8px; letter-spacing: .2em; }
@@ -833,4 +845,42 @@ body { margin: 0; background: var(--cinema-bg); }
   .navigation-confirm-actions button { border: 1px solid ButtonText; }
   .cinematic-studio .scene-object { border: 2px solid CanvasText; }
   .cinematic-studio .scene-object.selected { border: 3px solid Highlight; }
+}
+
+.language-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  padding: 3px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  color: inherit;
+}
+.language-switch > button,
+.entry-links .language-switch > button {
+  min-height: 28px;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font: 600 12px/1.2 var(--cinema-sans);
+  letter-spacing: normal;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.language-switch > button[aria-pressed="true"],
+.entry-links .language-switch > button[aria-pressed="true"] {
+  background: var(--cinema-text);
+  color: var(--cinema-bg);
+}
+.entry-links .language-switch > button:focus-visible,
+.language-switch > button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+@media (max-width: 760px) {
+  .entry-nav { flex-wrap: wrap; }
+  .entry-links { flex-wrap: wrap; }
 }

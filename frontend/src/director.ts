@@ -1,3 +1,4 @@
+import { t } from './i18n.ts'
 import type { Director, DirectorObject, Plan, Slot, StyleRecommendation } from './types'
 
 export const styleOptions: { id: Director['style_id']; label: string; detail: string }[] = [
@@ -24,7 +25,7 @@ export function styleRecommendationFor(slot: Slot): StyleRecommendation | undefi
 }
 export function styleChoiceLabel(id: Director['style_id'], recommendation?: StyleRecommendation): string {
   const label = styleOptions.find(item => item.id === id)?.label || id
-  return `${label}${recommendation?.style_id === id ? '（推荐）' : ''}`
+  return t(label) + (recommendation?.style_id === id ? t('（推荐）') : '')
 }
 export const brightnessOptions = [{ id: 'low', label: '偏暗', detail: '柔和暗调，主体清楚' }, { id: 'balanced', label: '自然', detail: '明暗自然、层次平衡' }, { id: 'high', label: '明亮', detail: '通透、轻盈' }] as const
 export const lightingOptions = [{ id: 'soft', label: '柔光' }, { id: 'hard', label: '硬光' }, { id: 'backlit', label: '逆光' }] as const
@@ -63,13 +64,13 @@ export function applyVisualSettings(slots: Slot[], source: Director): Slot[] {
 }
 export function planHasRegions(plan: Plan | null): boolean { return !!plan?.slots.some(slot => (slot.director?.objects.length || 0) > 0) }
 export function summarizeDirector(config: Director): string {
-  return [styleOptions.find(row => row.id === config.style_id)?.label, brightnessOptions.find(row => row.id === config.brightness)?.label].join(' · ')
+  return [styleOptions.find(row => row.id === config.style_id)?.label, brightnessOptions.find(row => row.id === config.brightness)?.label].map(label => t(label || '')).join(' · ')
 }
 export function directorSummary(slot: Slot): string { return summarizeDirector(directorFor(slot)) }
 export function objectPosition(object: DirectorObject): string {
   const horizontal = object.x + object.width / 2 < 100 / 3 ? 0 : object.x + object.width / 2 > 200 / 3 ? 2 : 1
   const vertical = object.y + object.height / 2 < 100 / 3 ? 0 : object.y + object.height / 2 > 200 / 3 ? 2 : 1
-  return [['左上方', '上方居中', '右上方'], ['左侧', '居中', '右侧'], ['左下方', '下方居中', '右下方']][vertical][horizontal]
+  return t([['左上方', '上方居中', '右上方'], ['左侧', '居中', '右侧'], ['左下方', '下方居中', '右下方']][vertical][horizontal])
 }
 export function alignObject(object: DirectorObject, axis: 'horizontal' | 'vertical', position: 'start' | 'center' | 'end'): DirectorObject {
   const size = axis === 'horizontal' ? object.width : object.height

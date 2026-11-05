@@ -10,6 +10,8 @@ The homepage keeps all eighteen animated scenes. The app picks a scene when you 
 
 For a newly imported article, one-click creation can cover local analysis, image generation, automatic selection and document export within a single authorization. The limit is five images with one attempt per image. The automatic flow stops after a failure or an uncertain result. The workspace also offers manual creation and light, dark or system appearance. [Workflow guide](one-click-appearance.md)
 
+Select **English** or **中文** at the top of the homepage or Workbench. The app remembers the choice on this browser and keeps the current draft when you switch. English mode requests English illustration plans for new analysis and uses English figure labels for new exports. The article itself and existing plans keep their original content.
+
 ## Run locally
 
 Use macOS/Linux, Python 3.12+ and Node.js 22.18+. Native Windows is not supported; Windows users can use a Linux environment in WSL.

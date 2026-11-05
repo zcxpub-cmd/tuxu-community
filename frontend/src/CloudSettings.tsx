@@ -1,3 +1,4 @@
+import { systemText, t } from './i18n'
 import { useEffect, useRef, useState } from 'react'
 import { request } from './api'
 import { canAdoptModelTest, cloudDraftChanged, safeModelIds } from './cloudVerification'
@@ -61,21 +62,21 @@ function ProviderSettings({ profile, locked, refreshEpoch, onUpdate }: { profile
     finally { if (alive.current) setBusy(false) }
   }
   return <div className="cloud-profile">
-    <div className="cloud-profile-heading"><strong>{profile.kind === 'ark' ? '豆包 / 火山方舟' : 'GPT 兼容 API'}</strong><span>{profile.ready ? '配置完整' : '待配置'}</span></div>
+    <div className="cloud-profile-heading"><strong>{profile.kind === 'ark' ? t("豆包 / 火山方舟") : t("GPT 兼容 API")}</strong><span>{profile.ready ? t("配置完整") : t("待配置")}</span></div>
     <ProviderVerification profile={profile} />
     <fieldset disabled={locked || busy}>
       <div className="cloud-config-grid">
-        <label>显示名称<input value={label} maxLength={80} onChange={event => setLabel(event.target.value)} /></label>
-        <label>模型名称<input value={model} maxLength={160} placeholder={profile.kind === 'ark' ? '模型标识或已授权的 ep 接入点' : '填写服务支持的图像模型标识'} onChange={event => setModel(event.target.value)} /></label>
-        {candidates.length > 0 && <label className="cloud-wide">已保存配置的候选模型<select value="" onChange={event => { if (event.target.value) { const needsSave = cloudDraftChanged(profile, { label, base_url: baseUrl, model: event.target.value, enabled, key, clear_key: clearKey }); setModel(event.target.value); setMessage(needsSave ? '候选模型已带入输入框，请点击保存后再测试或生成。' : '已选择当前保存的模型，可以测试或继续生成。'); setFailed(false) } }}><option value="">选择一个候选，带入模型输入框</option>{candidates.map(id => <option key={id} value={id}>{id}</option>)}</select></label>}
-        <label className="cloud-wide">API 地址<input value={baseUrl} maxLength={300} placeholder="https://…" spellCheck={false} onChange={event => setBaseUrl(event.target.value)} /></label>
-        <label className="cloud-wide">API 密钥<input type="password" value={key} maxLength={1024} autoComplete="new-password" spellCheck={false} placeholder={profile.key_present ? '已保存密钥；留空保留，填写可替换' : '填写 API 密钥'} onChange={event => { setKey(event.target.value); if (event.target.value) setClearKey(false) }} /><small className="muted">密钥保存在本机后台，保存后输入框会清空。更换服务地址需重新提供密钥。</small></label>
+        <label>{t("显示名称")}<input value={t(label)} maxLength={80} onChange={event => setLabel(event.target.value)} /></label>
+        <label>{t("模型名称")}<input value={model} maxLength={160} placeholder={profile.kind === 'ark' ? t("模型标识或已授权的 ep 接入点") : t("填写服务支持的图像模型标识")} onChange={event => setModel(event.target.value)} /></label>
+        {candidates.length > 0 && <label className="cloud-wide">{t("已保存配置的候选模型")}<select value="" onChange={event => { if (event.target.value) { const needsSave = cloudDraftChanged(profile, { label, base_url: baseUrl, model: event.target.value, enabled, key, clear_key: clearKey }); setModel(event.target.value); setMessage(needsSave ? '候选模型已带入输入框，请点击保存后再测试或生成。' : '已选择当前保存的模型，可以测试或继续生成。'); setFailed(false) } }}><option value="">{t("选择一个候选，带入模型输入框")}</option>{candidates.map(id => <option key={id} value={id}>{id}</option>)}</select></label>}
+        <label className="cloud-wide">{t("API 地址")}<input value={baseUrl} maxLength={300} placeholder="https://…" spellCheck={false} onChange={event => setBaseUrl(event.target.value)} /></label>
+        <label className="cloud-wide">{t("API 密钥")}<input type="password" value={key} maxLength={1024} autoComplete="new-password" spellCheck={false} placeholder={profile.key_present ? t("已保存密钥；留空保留，填写可替换") : t("填写 API 密钥")} onChange={event => { setKey(event.target.value); if (event.target.value) setClearKey(false) }} /><small className="muted">{t("密钥保存在本机后台，保存后输入框会清空。更换服务地址需重新提供密钥。")}</small></label>
       </div>
-      <div className="cloud-options"><label className="checkbox-label"><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} /><span>启用此服务</span></label>{profile.key_present && <label className="checkbox-label"><input type="checkbox" checked={clearKey} onChange={event => { setClearKey(event.target.checked); if (event.target.checked) setKey('') }} /><span>清除已保存密钥</span></label>}</div>
-      {dirty && <p role="status" className="cloud-dirty">有未保存的修改，请先保存。测试与生成使用已保存配置。</p>}
-      <div className="button-group"><button type="button" className="secondary" onClick={() => void save()} disabled={!dirty}>保存设置</button><button type="button" className="text-button" onClick={() => void test()} disabled={!profile.ready || dirty}>测试已保存配置</button></div>
+      <div className="cloud-options"><label className="checkbox-label"><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} /><span>{t("启用此服务")}</span></label>{profile.key_present && <label className="checkbox-label"><input type="checkbox" checked={clearKey} onChange={event => { setClearKey(event.target.checked); if (event.target.checked) setKey('') }} /><span>{t("清除已保存密钥")}</span></label>}</div>
+      {dirty && <p role="status" className="cloud-dirty">{t("有未保存的修改，请先保存。测试与生成使用已保存配置。")}</p>}
+      <div className="button-group"><button type="button" className="secondary" onClick={() => void save()} disabled={!dirty}>{t("保存设置")}</button><button type="button" className="text-button" onClick={() => void test()} disabled={!profile.ready || dirty}>{t("测试已保存配置")}</button></div>
     </fieldset>
-    {message && <p role={failed ? 'alert' : 'status'} className={failed ? 'inline-warning' : 'cloud-result'}>{message}</p>}
+    {message && <p role={failed ? 'alert' : 'status'} className={failed ? 'inline-warning' : 'cloud-result'}>{systemText(message)}</p>}
   </div>
 }
 
@@ -95,7 +96,7 @@ export default function CloudSettings({ catalog, localAgent, locked, onChange, o
     setRefreshing(true)
     try {
       const result = await request<CloudCatalog>('/image-providers')
-      if (id !== loadSequence.current) { if (publishedCatalog.current) return publishedCatalog.current; throw new Error('配置已更新') }
+      if (id !== loadSequence.current) { if (publishedCatalog.current) return publishedCatalog.current; throw new Error(t("配置已更新")) }
       publishedCatalog.current = result
       if (source !== 'test') setRefreshEpoch(value => value + 1)
       onChange(result); setLoadError(false)
@@ -103,7 +104,7 @@ export default function CloudSettings({ catalog, localAgent, locked, onChange, o
     } finally { if (id === loadSequence.current) setRefreshing(false) }
   }
   return <details ref={panel} className="cloud-settings card" onToggle={event => { if (event.currentTarget.open) void refresh('manual').catch(() => setLoadError(true)) }}>
-    <summary>生图连接设置 <span>本机智能体 / 云端 API · 可选</span></summary>
-    <div className="cloud-settings-body"><p className="muted">可以在导入文章前配置。文章分析及提示词由本地模型完成；确认生成后，只向所选服务发送冻结的画面提示词。</p><LocalAgentSettings status={localAgent} locked={locked} onRefresh={onAgentRefresh} /><button type="button" className="text-button cloud-refresh" disabled={locked || refreshing} onClick={() => void refresh('manual').then(onAgentRefresh).catch(() => setLoadError(true))}>{refreshing ? '刷新配置中……' : '刷新配置与验证状态'}</button>{catalog?.profiles.map(profile => <ProviderSettings key={profile.id} profile={profile} locked={locked || refreshing} refreshEpoch={refreshEpoch} onUpdate={refresh} />)}{!catalog && <p className="muted">读取配置中……</p>}{loadError && <p role="alert" className="inline-warning">配置暂未读取，请重新打开此面板或刷新服务。</p>}<p className="cloud-settings-note">本机智能体须先在本机完成连接；未连接时不会自动等待人工代跑。网页本身不能独立调用 ChatGPT 账户。也可选择自己的 API 或本地生图服务。</p></div>
+    <summary>{t("生图连接设置")}{' '}<span>{t("本机智能体 / 云端 API · 可选")}</span></summary>
+    <div className="cloud-settings-body"><p className="muted">{t("可以在导入文章前配置。文章分析及提示词由本地模型完成；确认生成后，只向所选服务发送冻结的画面提示词。")}</p><LocalAgentSettings status={localAgent} locked={locked} onRefresh={onAgentRefresh} /><button type="button" className="text-button cloud-refresh" disabled={locked || refreshing} onClick={() => void refresh('manual').then(onAgentRefresh).catch(() => setLoadError(true))}>{refreshing ? t("刷新配置中……") : t("刷新配置与验证状态")}</button>{catalog?.profiles.map(profile => <ProviderSettings key={profile.id} profile={profile} locked={locked || refreshing} refreshEpoch={refreshEpoch} onUpdate={refresh} />)}{!catalog && <p className="muted">{t("读取配置中……")}</p>}{loadError && <p role="alert" className="inline-warning">{t("配置暂未读取，请重新打开此面板或刷新服务。")}</p>}<p className="cloud-settings-note">{t("本机智能体须先在本机完成连接；未连接时不会自动等待人工代跑。网页本身不能独立调用 ChatGPT 账户。也可选择自己的 API 或本地生图服务。")}</p></div>
   </details>
 }

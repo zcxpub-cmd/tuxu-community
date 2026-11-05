@@ -77,6 +77,11 @@
 
 /* Workspace planes. Solid reading surfaces avoid white-on-white leftovers from
    the older light sheet and light-on-light leftovers from cinema.css. */
+:root[data-workspace-theme="light"] .cinematic-studio .tuxu-brand-mark {
+  color: #e8dcc2;
+  background: #111c23;
+  border-radius: 22.9167%;
+}
 :root[data-workspace-theme="light"] .cinematic-studio .sidebar { background: var(--cinema-side); border-color: var(--cinema-line); }
 :root[data-workspace-theme="light"] .cinematic-studio .topbar { background: var(--cinema-bg); }
 :root[data-workspace-theme="light"] .cinematic-studio :is(.brand-mark, .slot-card, .add-slot, .cloud-settings, .interface-settings) { border-color: var(--cinema-line); }

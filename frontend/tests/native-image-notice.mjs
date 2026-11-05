@@ -36,7 +36,7 @@ try {
   const actionsIndex = app.indexOf('className="asset-actions"')
   assert.ok(methodIndex >= 0 && noticeIndex > methodIndex && actionsIndex > noticeIndex, 'The asset notice follows processing information and precedes actions; review guidance may appear between the notice and actions')
   assert.match(app, /<NativeImageConfirmation provider=\{provider\} \/>/, 'The confirmation area supplies the selected provider')
-  assert.match(app, /原图 \{asset\.width\} × \{asset\.height\}/, 'Image selection continues to show actual asset dimensions')
+  assert.match(app, /\{t\("原图"\)\}\{' '\}\{asset\.width\} × \{asset\.height\}/, 'Image selection continues to show actual asset dimensions')
   assert.equal(requests, 0, 'Neither explanation starts a request')
   console.log('PASS: native-size note text/escaping; absent/blank/legacy assets; Codex-only confirmation; actual dimensions and zero render requests')
 } finally {

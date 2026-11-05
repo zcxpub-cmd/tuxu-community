@@ -1,3 +1,4 @@
+import { t } from './i18n'
 import { useEffect, useRef } from 'react'
 
 export default function NavigationConfirm({ onKeep, onDiscard }: { onKeep: () => void; onDiscard: () => void }) {
@@ -21,5 +22,5 @@ export default function NavigationConfirm({ onKeep, onDiscard }: { onKeep: () =>
     const first = buttons[0], last = buttons[buttons.length - 1]
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
-  }}><span className="eyebrow">保留你的创作</span><h2 id="navigation-confirm-title">还有未保存的内容</h2><p id="navigation-confirm-description">可以继续编辑并保存，也可以放弃这些修改后离开。</p><div className="navigation-confirm-actions"><button className="primary" onClick={onKeep}>继续编辑</button><button className="text-button" onClick={onDiscard}>放弃修改并离开</button></div></div></div>
+  }}><span className="eyebrow">{t("保留你的创作")}</span><h2 id="navigation-confirm-title">{t("还有未保存的内容")}</h2><p id="navigation-confirm-description">{t("可以继续编辑并保存，也可以放弃这些修改后离开。")}</p><div className="navigation-confirm-actions"><button className="primary" onClick={onKeep}>{t("继续编辑")}</button><button className="text-button" onClick={onDiscard}>{t("放弃修改并离开")}</button></div></div></div>
 }

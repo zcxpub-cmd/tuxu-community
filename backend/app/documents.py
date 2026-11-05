@@ -307,7 +307,14 @@ def _image_info(data: bytes) -> tuple[str, int, int]:
         raise ValueError("图片损坏或无法解码") from exc
 
 
-def _caption(number: int, text: str) -> str:
+def _caption(number: int, text: str, locale: str = "zh") -> str:
+    if locale == "en":
+        text = re.sub(r"^\s*(?:Fig(?:ure)?\.?|图)\s*\d+\s*[：:.、-]?\s*", "",
+                      str(text or "Illustration"), flags=re.IGNORECASE)
+        text = re.sub(r"\s*[（(]\s*(?:AI\s*生成示意图|AI-generated illustration)\s*[)）]\s*$",
+                      "", text, flags=re.IGNORECASE)
+        _check_text(text)
+        return f"Figure {number}. {text} (AI-generated illustration)"
     text = re.sub(r"^\s*图\s*\d+\s*[：:.、-]?\s*", "", str(text or "配图示意"))
     _check_text(text)
     if "AI生成示意图" not in re.sub(r"\s+", "", text):
@@ -315,7 +322,7 @@ def _caption(number: int, text: str) -> str:
     return f"图 {number} {text}"
 
 
-def _validated_selections(document: dict, plan: dict, selections: list[dict]) -> list[dict]:
+def _validated_selections(document: dict, plan: dict, selections: list[dict], locale: str = "zh") -> list[dict]:
     paragraphs = {p["id"]: p for p in document["paragraphs"]}
     slots = plan.get("slots", [])
     if len(slots) > 5 or len(selections) > 5:
@@ -349,7 +356,7 @@ def _validated_selections(document: dict, plan: dict, selections: list[dict]) ->
                        "alt_text": alt_text, "slot_order": slot_order[slot_id]})
     result.sort(key=lambda row: (row["paragraph"]["source_index"], row["slot_order"]))
     for index, row in enumerate(result, 1):
-        row["caption"] = _caption(index, row.get("caption", slot_map[row["slot_id"]].get("caption", "")))
+        row["caption"] = _caption(index, row.get("caption", slot_map[row["slot_id"]].get("caption", "")), locale)
         row["number"] = index
     return result
 
@@ -483,7 +490,7 @@ def _markdown_escape(text: str) -> str:
     return re.sub(r"([\\`*_{}\[\]<>#|~])", r"\\\1", text)
 
 
-def _write_markdown(document: dict, rows: list[dict], source_data: bytes | None, target: Path) -> None:
+def _write_markdown(document: dict, rows: list[dict], source_data: bytes | None, target: Path, locale: str = "zh") -> None:
     by_paragraph: dict[str, list[dict]] = {}
     files: dict[str, bytes] = {}
     for row in rows:
@@ -499,7 +506,8 @@ def _write_markdown(document: dict, rows: list[dict], source_data: bytes | None,
             suffix = {"JPEG": "jpg", "TIFF": "tiff"}.get(format, format.lower())
             path = f"images/source_{paragraph['source_index']:04d}_{index:02d}.{suffix}"
             files[path] = data
-            fragments.append(f"![原稿图片]({path})")
+            label = "Original image" if locale == "en" else "原稿图片"
+            fragments.append(f"![{label}]({path})")
         for row in by_paragraph.get(paragraph["id"], []):
             fragments.append(f"![{_markdown_escape(row['alt_text'])}]({row['bundle_path']})\n\n{_markdown_escape(row['caption'])}")
         return "\n\n".join(fragments)
@@ -553,7 +561,7 @@ def _data_image(data: bytes, format: str, alt: str) -> str:
     return f'<img src="data:{mime};base64,{base64.b64encode(data).decode("ascii")}" alt="{html.escape(alt, quote=True)}">'
 
 
-def _write_html(document: dict, rows: list[dict], source_data: bytes | None, target: Path) -> None:
+def _write_html(document: dict, rows: list[dict], source_data: bytes | None, target: Path, locale: str = "zh") -> None:
     by_paragraph: dict[str, list[dict]] = {}
     for row in rows:
         by_paragraph.setdefault(row["paragraph"]["id"], []).append(row)
@@ -569,19 +577,20 @@ def _write_html(document: dict, rows: list[dict], source_data: bytes | None, tar
             tag = f"h{min(paragraph['level'] or 1, 6)}" if paragraph["kind"] == "heading" else "p"
             parts.append(f"<{tag}>{text}</{tag}>")
         for data, format in existing.get(paragraph["id"], []):
-            parts.append(f"<figure>{_data_image(data, format, '原稿图片')}</figure>")
+            parts.append(f"<figure>{_data_image(data, format, 'Original image' if locale == 'en' else '原稿图片')}</figure>")
         for row in by_paragraph.get(paragraph["id"], []):
             parts.append(f"<figure>{_data_image(row['image_data'], row['image_format'], row['alt_text'])}<figcaption>{html.escape(row['caption'], quote=True)}</figcaption></figure>")
-    output = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
+    language = "en" if locale == "en" else "zh-CN"
+    output = f'<!doctype html><html lang="{language}"><head><meta charset="utf-8">'
     output += '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'; base-uri \'none\'; form-action \'none\'">'
-    output += f"<title>{html.escape(document.get('title', '文章预览'), quote=True)}</title>"
+    output += f"<title>{html.escape(document.get('title', 'Article preview' if locale == 'en' else '文章预览'), quote=True)}</title>"
     output += '<style>body{font:17px/1.8 Arial,"宋体",serif;max-width:850px;margin:40px auto;padding:0 24px;overflow-wrap:anywhere}figure{text-align:center;margin:24px 0;break-inside:avoid}img{max-width:100%;height:auto}figcaption{font-size:14px;color:#555}table{border-collapse:collapse;width:100%}td{border:1px solid #ccc;padding:8px}p{white-space:pre-wrap}</style></head><body>'
     output += "".join(parts) + "</body></html>"
     target.write_text(output, encoding="utf-8")
 
 
 def export_document(source_path: Path | None, document: dict, plan: dict,
-                    selections: list[dict], output_dir: Path, format: str) -> Path:
+                    selections: list[dict], output_dir: Path, format: str, *, locale: str = "zh") -> Path:
     format = format.lower()
     filenames = {"docx": "illustrated.docx", "markdown": "illustrated.zip", "html": "preview.html"}
     if format not in filenames:
@@ -607,7 +616,7 @@ def export_document(source_path: Path | None, document: dict, plan: dict,
                 raise ValueError("文档段落锚点与原稿不一致，请重新导入")
     elif document["format"] == "docx":
         raise ValueError("DOCX 导出需要保留原始文件，不能从纯文本重建")
-    rows = _validated_selections(document, plan, selections)
+    rows = _validated_selections(document, plan, selections, locale)
     output_dir.mkdir(parents=True, exist_ok=True)
     handle = tempfile.NamedTemporaryFile(dir=output_dir, prefix=".export-", suffix=target.suffix, delete=False)
     temporary = Path(handle.name)
@@ -616,9 +625,9 @@ def export_document(source_path: Path | None, document: dict, plan: dict,
         if format == "docx":
             _write_docx(source_data, document, rows, temporary)
         elif format == "markdown":
-            _write_markdown(document, rows, source_data, temporary)
+            _write_markdown(document, rows, source_data, temporary, locale)
         else:
-            _write_html(document, rows, source_data, temporary)
+            _write_html(document, rows, source_data, temporary, locale)
         if source_path is not None and _hash(source_path.read_bytes()) != document["source_hash"]:
             raise ValueError("导出期间原稿已改变，请重新确认")
         os.replace(temporary, target)

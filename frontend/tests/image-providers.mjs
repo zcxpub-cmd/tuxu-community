@@ -75,7 +75,7 @@ assert.doesNotMatch(settings, /profile\.(?:api_key|key_file|key_env)/, 'Stored c
 assert.doesNotMatch(settings, /result\.error|err\.message/, 'Cloud configuration errors never echo raw provider response text')
 assert.match(settings, /更换服务地址需重新提供密钥/)
 assert.match(app, /provider !== 'local' \|\| !regionalPlan/, 'Cloud generation bypasses local region-node readiness')
-assert.match(app, /provider === 'openai' \? <label>图片质量/, 'Only the GPT compatible API exposes medium/high quality')
+assert.match(app, /provider === 'openai' \? <label>\{t\("图片质量"\)\}/, 'Only the GPT compatible API exposes medium/high quality')
 assert.match(app, /豆包使用 2K 尺寸，具体画质由模型决定/)
 assert.match(app, /按所选画幅，质量由本机智能体决定/)
 assert.match(app, /文章分析及提示词仍由本地模型完成/)

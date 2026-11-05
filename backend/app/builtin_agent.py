@@ -141,8 +141,9 @@ class BuiltinAgentRuntime:
         value = self._read_config()
         return {**value, 'model': _model(model if model is not None else value['model'])}
 
-    def analyze(self, document, genre, style, model):
-        return self.service.ollama.analyze(document, genre, style, _model(model))
+    def analyze(self, document, genre, style, model, *, locale="zh"):
+        options = {"locale": locale} if locale == "en" else {}
+        return self.service.ollama.analyze(document, genre, style, _model(model), **options)
 
     def prompts(self, slots, style, model):
         return self.service.ollama.prompts(slots, style, _model(model))

@@ -1,3 +1,4 @@
+import { currentLocale } from './i18n.ts'
 import type { Asset, Paragraph, Plan, Selection, Slot, Task } from './types'
 
 export interface SelectedFigure {
@@ -11,6 +12,12 @@ export interface SelectedFigure {
 
 /** Mirrors backend/app/documents.py: _caption and _validated_selections. */
 export function figureCaption(number: number, value: string): string {
+  if (currentLocale() === 'en') {
+    const caption = (value || 'Illustration')
+      .replace(/^\s*(?:Fig(?:ure)?\.?|图)\s*\d+\s*[：:.、-]?\s*/i, '')
+      .replace(/\s*[（(]\s*(?:AI\s*生成示意图|AI-generated illustration)\s*[)）]\s*$/i, '')
+    return `Figure ${number}. ${caption} (AI-generated illustration)`
+  }
   let text = (value || '配图示意').replace(/^\s*图\s*\d+\s*[：:.、-]?\s*/, '')
   if (!text.replace(/\s+/g, '').includes('AI生成示意图')) text += '（AI 生成示意图）'
   return `图 ${number} ${text}`

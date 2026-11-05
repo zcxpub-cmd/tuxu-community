@@ -163,7 +163,7 @@ class OneClick:
 
     def start_run(self, task_id, body):
         from .models import TEXT_MODEL
-        allowed = {'confirm', 'idempotency_key', 'model', 'image_provider', 'checkpoint', 'cloud_quality', 'format', 'max_images'}
+        allowed = {'confirm', 'idempotency_key', 'model', 'image_provider', 'checkpoint', 'cloud_quality', 'format', 'max_images', 'locale'}
         if set(body) - allowed or body.get('confirm') is not True:
             raise HTTPException(400, '请明确确认一键执行范围。')
         value = {'model': body.get('model') or TEXT_MODEL, 'image_provider': body.get('image_provider', 'local'),
@@ -177,6 +177,11 @@ class OneClick:
                 value['cloud_quality'] not in ('medium', 'high') or value['format'] not in ('docx', 'markdown', 'html') or
                 type(value['max_images']) is not int or not 1 <= value['max_images'] <= 5):
             raise HTTPException(400, '一键执行参数不正确。')
+        locale = body.get('locale', 'zh')
+        if locale not in ('zh', 'en'):
+            raise HTTPException(400, '界面语言无效。')
+        if locale == 'en':
+            value['locale'] = locale
         body_hash = digest(value)
         task = self.service.require(task_id)
         existing = task.get('automation')
@@ -305,12 +310,13 @@ class OneClick:
             return
         action = automation['_actions'].get(stage)
         body = automation['_consent']['body']
+        language = {'locale': body['locale']} if 'locale' in body else {}
         if action and action['state'] == 'intent':
             self._halt(task_id, run_id, 'paused', MESSAGES['unknown'])
             return
         if stage == 'analysis':
             if not action:
-                self._invoke(task_id, run_id, stage, {'model': body['model']})
+                self._invoke(task_id, run_id, stage, {'model': body['model'], **language})
                 return
             job = next(job for job in task['jobs'] if job['id'] == action['job_id'])
             if job['status'] in ('queued', 'running'):
@@ -384,7 +390,7 @@ class OneClick:
         elif stage == 'export':
             if not action:
                 self._invoke(task_id, run_id, stage, {'format': body['format'], 'confirm_insert': True,
-                    'idempotency_key': 'one-click-export:' + run_id})
+                    'idempotency_key': 'one-click-export:' + run_id, **language})
                 return
             self._update(task_id, run_id, lambda current, run: run.update(status='completed', stage='completed',
                 message=MESSAGES['completed'] if current['plan']['slots'] else MESSAGES['zero'], export_url=action['url']))

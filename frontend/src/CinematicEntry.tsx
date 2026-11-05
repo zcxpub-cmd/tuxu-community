@@ -1,3 +1,5 @@
+import { t } from './i18n'
+import LanguageSwitch from './LanguageSwitch'
 import { useEffect, useRef, useState } from 'react'
 import gsap from 'gsap'
 import { useGSAP } from '@gsap/react'
@@ -98,7 +100,7 @@ export default function CinematicEntry({ scene, motionEnabled, onStart, onStudio
     return () => media.revert()
   }, { scope: root, dependencies: [motionEnabled, scene.id, videoActive], revertOnUpdate: true })
 
-  return <main ref={root} className="cinematic-entry" data-scene={scene.id} aria-label="图序首页">
+  return <main ref={root} className="cinematic-entry" data-scene={scene.id} aria-label={t("图序首页")}>
     <div className="entry-parallax" aria-hidden="true">
       <img className="entry-backdrop" src={scene.url} alt="" fetchPriority="high" />
       {videoActive && <video key={scene.id} ref={video}
@@ -107,16 +109,16 @@ export default function CinematicEntry({ scene, motionEnabled, onStart, onStudio
         onError={() => setFailedVideo(scene.id)} />}
     </div>
     <div className="entry-shade" aria-hidden="true" />
-    <nav className="entry-nav" aria-label="主导航">
-      <div className="entry-brand"><span>图序</span><small>TUXU</small></div>
-      <div className="entry-links"><button onClick={onStudio}>工作台</button><button onClick={onResume}>作品记录</button><button onClick={onSettings} title="设置，包含界面动效开关">设置</button></div>
+    <nav className="entry-nav" aria-label={t("主导航")}>
+      <div className="entry-brand"><span className="tuxu-brand-mark" aria-hidden="true" /><span>{t("图序")}</span><small>TUXU</small></div>
+      <div className="entry-links"><LanguageSwitch /><button onClick={onStudio}>{t("工作台")}</button><button onClick={onResume}>{t("作品记录")}</button><button onClick={onSettings} title={t("设置，包含界面动效开关")}>{t("设置")}</button></div>
     </nav>
     <div className="entry-main"><div className="entry-copy">
-      <h1 className="entry-title">让文字，<br />拥有色彩。</h1>
-      <p className="entry-description">从一篇文章，开始一场视觉叙事。</p>
-      <div className="entry-actions"><button className="entry-primary" onClick={onStart}>开始创作 <Icon name="arrow" size={25} /></button><button className="entry-secondary" onClick={onResume}>继续项目</button></div>
-      <p className="entry-principles">本地分析 <span>·</span> 自由构图 <span>·</span> 确认后生成</p>
+      <h1 className="entry-title">{t("让文字，")}<br />{t("拥有色彩。")}</h1>
+      <p className="entry-description">{t("从一篇文章，开始一场视觉叙事。")}</p>
+      <div className="entry-actions"><button className="entry-primary" onClick={onStart}>{t("开始创作")}{' '}<Icon name="arrow" size={25} /></button><button className="entry-secondary" onClick={onResume}>{t("继续项目")}</button></div>
+      <p className="entry-principles">{t("本地分析")}{' '}<span>·</span>{' '}{t("自由构图")}{' '}<span>·</span>{' '}{t("确认后生成")}</p>
     </div></div>
-    <div className="entry-flow" aria-label="从文章到成稿"><span>文章</span><i>/</i><span>画面</span><i>/</i><span>成稿</span></div>
+    <div className="entry-flow" aria-label={t("从文章到成稿")}><span>{t("文章")}</span><i>/</i><span>{t("画面")}</span><i>/</i><span>{t("成稿")}</span></div>
   </main>
 }

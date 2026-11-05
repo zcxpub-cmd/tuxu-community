@@ -422,7 +422,8 @@ class Service:
         if task.get('cancel_requested'):
             self.finish(task_id, job_id, 'cancelled', '分析已取消，未开始模型请求。')
             return
-        result = self.builtin_agent.analyze(task['document'], task['genre'], task['style'], job['model'])
+        options = {'locale': 'en'} if job.get('locale') == 'en' else {}
+        result = self.builtin_agent.analyze(task['document'], task['genre'], task['style'], job['model'], **options)
         coverage = result.get('coverage')
         expected = [p['id'] for p in task['document']['paragraphs']]
         if not isinstance(coverage, list) or len(coverage) != len(expected) or set(coverage) != set(expected):
@@ -976,6 +977,10 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
     @app.post('/api/tasks/{task_id}/analyze')
     def analyze(task_id: str, body: dict):
         model = str(body.get('model') or TEXT_MODEL)
+        locale = body.get('locale', 'zh')
+        if locale not in ('zh', 'en'):
+            bad('界面语言无效。')
+        options = {'locale': locale} if locale == 'en' else {}
         if len(model) > 150:
             bad('模型名称无效。')
         def change(t):
@@ -986,7 +991,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
             t['cancel_requested'] = False
             t['error'] = None
             t['status'] = 'analyzing'
-            job = new_job(t, 'analysis', model=model, document_hash=t['document']['source_hash'])
+            job = new_job(t, 'analysis', model=model, document_hash=t['document']['source_hash'], **options)
             t['jobs'].append(job)
             service.one_click.effect(t, 'analysis', job_id=job['id'])
             return job['id']
@@ -1327,6 +1332,10 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
         service.one_click.guard(service.require(task_id))
         from .documents import export_document
         format = body.get('format')
+        locale = body.get('locale', 'zh')
+        if locale not in ('zh', 'en'):
+            bad('界面语言无效。')
+        options = {'locale': locale} if locale == 'en' else {}
         key = str(body.get('idempotency_key', '')).strip()
         if body.get('confirm_insert') is not True or format not in ('docx', 'markdown', 'html') or not key or len(key) > 200:
             bad('请确认插图位置并提供有效导出格式与幂等键。')
@@ -1347,7 +1356,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
                 bad('请至少选择一张有效图片后导出。')
             selected_ids = {selection['asset_id'] for selection in selections.values()}
             processed_ids = {selection['asset_id'] for selection in selections.values() if selection['use_processed']}
-            export_scope = {'snapshot': snap, 'format': format, 'selections': selections}
+            export_scope = {'snapshot': snap, 'format': format, 'selections': selections, **options}
             processing = {asset['id']: asset.get('processing') for asset in task['assets'] if asset['id'] in selected_ids}
             fingerprint = digest({**export_scope, 'processed': {
                 asset_id: value for asset_id, value in processing.items() if asset_id in processed_ids}})
@@ -1385,7 +1394,7 @@ def create_app(data_dir=None, ollama_adapter=None, comfy_adapter=None, recover=T
                 bad('保存的原稿哈希已改变，拒绝从不匹配的文档导出。', 409)
             try:
                 output = Path(export_document(source_path,
-                        task['document'], task['plan'], items, output_dir, format))
+                        task['document'], task['plan'], items, output_dir, format, **options))
             except ValueError as exc:
                 bad(str(exc))
             if not output.is_file() or output.resolve().parent != output_dir.resolve():

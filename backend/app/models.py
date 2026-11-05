@@ -142,10 +142,10 @@ class OllamaAdapter:
                               'items': {'type': 'object', 'additionalProperties': False,
                                         'required': list(properties), 'properties': properties}}}}
 
-    def analyze(self, document, genre, style, model):
+    def analyze(self, document, genre, style, model, *, locale="zh"):
         if len(style) > 1000:
             raise ModelError('统一视觉风格超过 1,000 字，请精简后再分析以保证上下文完整。')
-        system = community.ANALYSIS
+        system = community.ANALYSIS_EN if locale == "en" else community.ANALYSIS
         chunks = self.chunks(document['paragraphs'])
         if len(chunks) > 64:
             raise ModelError('正文过度碎片化，超过 64 个有界阅读块；请合并短段后再分析。')
@@ -205,7 +205,7 @@ class OllamaAdapter:
                 candidates = [candidates[round(i * (len(candidates) - 1) / 14)] for i in range(15)]
             summary_limit = max(1, 1500 // len(summaries))
             synthesis = self._chat(model,
-                community.SYNTHESIS,
+                community.SYNTHESIS_EN if locale == "en" else community.SYNTHESIS,
                 {'genre': genre, 'style': style, 'chunk_summary_excerpts': [s[:summary_limit] for s in summaries],
                  'candidate_previews': [{'candidate_id': c['candidate_id'], 'paragraph_id': c['paragraph_id'],
                                         'description_excerpt': str(c.get('description', ''))[:200]} for c in candidates]})
